@@ -20,9 +20,9 @@ using Vector = Point;
 #define optional boost::optional
 #define nullopt boost::none
 
-Point light_pos = Point(-4.2, 0, 1);
-float light_size = 1.0;
-float light_power = 7.4;
+Point light_pos = Point(-4.2, 0, 5);
+float light_size = 3.0;
+float light_power = 3.4;
 Point light_color = Point(light_power, light_power, light_power);
 float light_size2 = light_size * light_size;
 
@@ -35,11 +35,12 @@ Vector floor_color(0.14, 1.0, 0.14);
 Vector wall_color(0.85, 0.8, 0.48);
 Vector ceiling_color(0.88, 0.88, 0.88);
 Vector floor_normal(0, 0, 1);
-float attenuation = 0.6;
+float ray_attenuation = 0.6;
+float defuse_attenuation = 0.4;
 
 std::random_device rd;
 std::mt19937 gen(rd());
-std::normal_distribution<> distr{-0.02,0.02};
+std::normal_distribution<> distr{-0.07,0.07};
 
 
 void print(const char* msg, const Vector& v) {
@@ -57,36 +58,7 @@ Point black = Point(0, 0, 0);
 optional<Point> trace_extra(const Vector& norm_ray, const Vector& point, int depth);
 optional<Point> trace(const Vector& norm_ray, const Vector& origin, int depth);
 Point floor_light(const Point& color, const Point& normal, const Point& point, const Point& reflection, int depth);
-
-Point ball_light(
-    const Point& color,
-    const Vector& normal,
-    const Vector& reflection,
-    const Point& point,
-    int depth) {
-  Vector full_color = color * 0.0;
-  if (depth > 0) {
-    auto second_ray = trace(reflection, point, depth - 1);
-    if (second_ray) {
-      full_color += color.mul(*second_ray) * attenuation;
-    }
-  }
-
-  // TODO(vol): light is one point now
-  Vector light_from_point = light_pos - point;
-  float angle = light_from_point * normal;
-  P(angle);
-  if (angle < 0) {
-    // No difuse color
-    return full_color;
-  }
-
-  float light_distance2 = light_from_point.size2();
-  P(light_distance2);
-  Vector defuse_color = color.mul(light_color) * (angle/light_distance2);
-  full_color += defuse_color;
-  return full_color;
-}
+Point ball_light(const Point& color, const Vector& normal, const Vector& reflection, const Point& point, int depth);
 
 float make_obstraction(float lsz, float sz, float off) {
   if (off > lsz + sz) {
@@ -126,7 +98,7 @@ class Ball {
   public:
   Ball(const Vector& position, const Vector& color) : position_(position), color_(color) {}
 
-  optional<Pretrace> pretrace(const Vector& norm_ray, const Vector& origin, int depth) const {
+  optional<Pretrace> pretrace(const Vector& norm_ray, const Vector& origin) const {
     P(norm_ray);
     Vector ball_vector = position_ - origin;
 
@@ -193,15 +165,15 @@ class Ball {
 };
 
 std::vector<Ball> balls = {
-  {{0, 0, ball_size}, {1, 0.01, 0.01}},
-  {{2 * ball_size, 2 * ball_size, ball_size}, {0.01, 1.0, 0.01}},
-  {{-2 * ball_size, 2 * ball_size, ball_size}, {0.01, 0.01, 1.}},
+  {{0, 0.7 * ball_size, ball_size}, {1, 0.01, 0.01}},
+  {{-2 * ball_size, 0. * ball_size, ball_size}, {0.01, 1.0, 0.01}},
+  {{2 * ball_size, 0. * ball_size, ball_size}, {1.00, 0.00, 1.}},
 };
 
 optional<Point> trace_ball(const Vector& norm_ray, const Vector& origin, int depth) {
   optional<Pretrace> p;
   for (const Ball& b : balls) {
-    optional<Pretrace> np = b.pretrace(norm_ray, origin, depth);
+    optional<Pretrace> np = b.pretrace(norm_ray, origin);
     if (p == nullopt || (np && (*np).closest_point_distance_from_viewer < (*p).closest_point_distance_from_viewer)) {
         p = np;
     }
@@ -232,6 +204,47 @@ optional<Point> trace_light(const Vector& norm_ray, const Vector& origin) {
   return light_color * (multiplier/light_distance2);
 }
 
+Point ball_light(
+    const Point& color,
+    const Vector& normal,
+    const Vector& reflection,
+    const Point& point,
+    int depth) {
+  Vector full_color = color * 0.0;
+  if (depth > 0) {
+    auto second_ray = trace(reflection, point, depth - 1);
+    if (second_ray) {
+      full_color += color.mul(*second_ray) * ray_attenuation;
+    }
+  }
+
+  // TODO(vol): light is one point now
+  Vector light_from_point = light_pos - point;
+  float angle = light_from_point * normal;
+  P(angle);
+  if (angle < 0) {
+    // No difuse color
+    return full_color;
+  }
+
+  float light_distance2 = light_from_point.size2();
+  P(light_distance2);
+  Vector light_from_point_norm = light_from_point * (1/sqrt(light_distance2));
+
+  float visibility_level = 1;
+  for (const Ball& b : balls) {
+    visibility_level *= 1 - b.obstracted_by_ball(point, light_from_point_norm, light_distance2);
+  }
+  if (visibility_level < 0.01) {
+    return full_color;
+  }
+
+  Vector defuse_color = color.mul(light_color) * (visibility_level * angle * defuse_attenuation/light_distance2);
+  full_color += defuse_color;
+  return full_color;
+}
+
+
 Point floor_light(
     const Point& color,
     const Point& normal,
@@ -247,7 +260,7 @@ Point floor_light(
 
     auto res = trace(rand_reflection, point, depth - 1);
     if (res) {
-      total_color += color.mul(*res) * attenuation;
+      total_color += color.mul(*res) * ray_attenuation;
     }
   }
   Vector light_from_floor = light_pos - point;
@@ -261,7 +274,7 @@ Point floor_light(
   if (visibility_level < 0.01) {
     return total_color;
   }
-  Vector defuse_color = color.mul(light_color) * (visibility_level * (normal * light_from_floor_norm)/light_distance2);
+  Vector defuse_color = color.mul(light_color) * (visibility_level * defuse_attenuation * (normal * light_from_floor_norm)/light_distance2);
   P(defuse_color);
   total_color += defuse_color;
   return total_color;
