@@ -31,6 +31,7 @@ class Point {
     inline GLfloat size2() const;
     inline Point normalize() const;
     inline Point mul(const Point& v) const;
+    inline float sum() const;
 
     friend inline Point operator ^(const Point& v1, const Point& v2);
     friend inline GLfloat operator *(const Point& v1, const Point& v2);
@@ -222,6 +223,10 @@ inline Point Point::mul(const Point& v) const {
     return Point(x * v.x, y * v.y, z * v.z);
 }
 
+inline float Point::sum() const {
+    return x + y + z;
+}
+
 inline Point
 operator *(const Point& v, GLfloat f) {
     Point res(v);
@@ -231,7 +236,9 @@ operator *(const Point& v, GLfloat f) {
 inline bool
 Point::operator == (const Point& v) const
 {
-    return (x == v.x) && (y == v.y) && (z == v.z);
+    return ((x > v.x * 0.99) || (x < v.x * 1.01))
+        && ((y > v.y * 0.99) || (y < v.y * 1.01))
+        && ((z > v.z * 0.99) || (z < v.z * 1.01));
 }
 inline bool
 Point::operator != (const Point& v) const
