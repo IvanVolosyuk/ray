@@ -1,6 +1,6 @@
-LDFLAGS=-L/usr/local/X11R6/lib -lGL -lglut -lSDL2
+LDFLAGS=-L/usr/local/X11R6/lib -lGL -lglut -lSDL2 -lpthread
 CFLAGS+=-I../src -ggdb
-CXXFLAGS+=-I../src -ggdb -I/usr/include/SDL2 -std=c++17
+CXXFLAGS+=-I../src -ggdb -I/usr/include/SDL2 -std=c++17 -O3
 
 vpath %.cpp ../src
 vpath %.hpp ../src
