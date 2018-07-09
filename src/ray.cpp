@@ -24,7 +24,7 @@ using Vector = Point;
 #define nullopt boost::none
 
 Point light_pos = Point(-4.2, -3, 2);
-float light_size = 2.0;
+float light_size = 1.0;
 float light_power = 3.4;
 Point light_color = Point(light_power, light_power, light_power);
 float light_size2 = light_size * light_size;
@@ -47,6 +47,7 @@ int max_depth = 2;
 std::random_device rd;
 std::mt19937 gen(rd());
 std::normal_distribution<> distr{-0.02,0.02};
+std::normal_distribution<> light_distr{light_size, light_size};
 
 int numCPU = sysconf(_SC_NPROCESSORS_ONLN);
 
@@ -63,230 +64,170 @@ void print(const char* msg, float v) {
 
 Point black = Point(0, 0, 0);
 
-optional<Point> trace_extra(const Vector& norm_ray, const Vector& point, int depth);
 optional<Point> trace(const Vector& norm_ray, const Vector& origin, int depth);
-Point floor_light(const Point& color, const Point& normal, const Point& point, const Point& reflection, int depth);
-Point ball_light(const Point& color, const Vector& normal, const Vector& reflection, const Point& point, int depth);
-
-float make_obstraction(float lsz, float sz, float off) {
-  if (off > lsz + sz) {
-    P(0);
-    return 0;
-  }
-  if (off < sz - lsz) {
-    return 1;
-  }
-  float max_possible = sz / lsz;
-  P(max_possible);
-  float fraction = -(off - lsz - sz) / (2 * lsz);
-  P(fraction);
-  auto res = std::max(0.f, std::min(1.f, max_possible * fraction));
-  P(res);
-  return res;
-}
-
-float check_obstraction() {
-  trace_values = true;
-  assert(make_obstraction(0.001, 0.1, 1) == 0);
-  assert(make_obstraction(0.001, 0.1, 0) == 1);
-  assert(make_obstraction(1, 1, 1) > 0.49f);
-  assert(make_obstraction(1, 1, 1) < 0.51f);
-}
-
+Point compute_light(const Point& color, const Vector& normal, const Vector& reflection,
+    const Point& point, bool rought_surface, int depth);
 
 class Ball;
 
-struct Pretrace {
-  const Ball *ball;
-  float closest_point_distance_from_viewer;
-  float distance_from_ball_center2;
+class Tracer {
+  public:
+    Tracer(float closest_point_distance_from_viewer, float distance_from_object_center2)
+      : closest_point_distance_from_viewer_(closest_point_distance_from_viewer),
+      distance_from_object_center2_(distance_from_object_center2) {}
+    virtual Point trace(const Vector& norm_ray, const Vector& origin, int depth) = 0;
+    float closest_point_distance_from_viewer_;
+    float distance_from_object_center2_;
+};
+
+class BallTracer : public Tracer {
+  public:
+    BallTracer(const Ball* ball, float closest_point_distance_from_viewer, float distance_from_object_center2)
+      : Tracer(closest_point_distance_from_viewer, distance_from_object_center2), ball_(ball) {}
+
+    Point trace(const Vector& norm_ray, const Vector& origin, int depth);
+    const Ball *ball_;
 };
 
 class Ball {
   public:
-  Ball(const Vector& position, const Vector& color) : position_(position), color_(color) {}
+    Ball(const Vector& position, const Vector& color) : position_(position), color_(color) {}
 
-  optional<Pretrace> pretrace(const Vector& norm_ray, const Vector& origin) const {
-    P(norm_ray);
-    Vector ball_vector = position_ - origin;
+    std::unique_ptr<Tracer> pretrace(const Vector& norm_ray, const Vector& origin) const {
+      P(norm_ray);
+      Vector ball_vector = position_ - origin;
 
-    float closest_point_distance_from_viewer = norm_ray * ball_vector;
-    if (closest_point_distance_from_viewer < 0) {
-      return nullopt;
+      float closest_point_distance_from_viewer = norm_ray * ball_vector;
+      if (closest_point_distance_from_viewer < 0) {
+        return nullptr;
+      }
+
+      float ball_distance2 = ball_vector * ball_vector;
+      float distance_from_object_center2 = ball_distance2 -
+        closest_point_distance_from_viewer * closest_point_distance_from_viewer;
+      if (distance_from_object_center2 > ball_size2) {
+        return nullptr;
+      }
+      return std::make_unique<BallTracer>(this, closest_point_distance_from_viewer, distance_from_object_center2);
     }
 
-    float ball_distance2 = ball_vector * ball_vector;
-    float distance_from_ball_center2 = ball_distance2 -
-      closest_point_distance_from_viewer * closest_point_distance_from_viewer;
-    if (distance_from_ball_center2 > ball_size2) {
-      return nullopt;
-    }
-    return Pretrace{this, closest_point_distance_from_viewer, distance_from_ball_center2};
-  }
-
-  Point trace(const Pretrace& p, const Vector& norm_ray, const Vector& origin, int depth) const {
-    float distance_from_viewer = p.closest_point_distance_from_viewer - sqrt(ball_size2 - p.distance_from_ball_center2);
-    Point intersection = origin + norm_ray * distance_from_viewer;
-
-    P(intersection);
-    Vector distance_from_ball_vector = intersection - position_;
-
-    Vector normal = distance_from_ball_vector * ball_inv_size;
-    P(normal);
-    Vector ray_reflection = norm_ray - normal * 2 * (norm_ray * normal);
-    P(ray_reflection);
-    return ball_light(color_,
-        normal,
-        ray_reflection,
-        intersection,
-        depth);
-  }
-
-  float obstracted_by_ball(const Vector& origin, const Vector& norm_ray, float light_distance2) const {
-    P(norm_ray);
-    Vector ball_vector = position_ - origin;
-    P(ball_vector);
-    P(light_distance2);
-    float ball_distance2 = ball_vector * ball_vector;
-    P(ball_distance2);
-
-    float closest_point_distance_from_viewer = norm_ray * ball_vector;
-    if (closest_point_distance_from_viewer < 0) {
-      return 0;
-    }
-    P(closest_point_distance_from_viewer);
-    float distance_from_ball_center2 = ball_distance2 -
-      closest_point_distance_from_viewer * closest_point_distance_from_viewer;
-
-    // effective light size
-    float lsz = sqrt(light_size2 / light_distance2);
-    P(lsz);
-    // effective obstruction size
-    float sz = ball_size / closest_point_distance_from_viewer;
-    P(sz);
-    // effective shift of obstruction
-    float off = sqrt(distance_from_ball_center2) / closest_point_distance_from_viewer;
-    P(off);
-    return make_obstraction(lsz, sz, off);
-  }
-  Vector position_, color_;
+    Vector position_, color_;
 };
 
-std::vector<Ball> balls = {
-  {{0, 0.7 * ball_size, ball_size}, {1, 0.01, 0.01}},
-  {{-2 * ball_size, 0, ball_size}, {0.01, 1.0, 0.01}},
-  {{2 * ball_size, 0, ball_size}, {1.00, 0.00, 1.}},
-  {{2 * ball_size, 0, ball_size}, {1.00, 1.00, 1.}},
-};
+Point BallTracer::trace(const Vector& norm_ray, const Vector& origin, int depth) {
+  float distance_from_viewer = closest_point_distance_from_viewer_ - sqrt(ball_size2 - distance_from_object_center2_);
+  Point intersection = origin + norm_ray * distance_from_viewer;
 
-optional<Point> trace_ball(const Vector& norm_ray, const Vector& origin, int depth) {
-  optional<Pretrace> p;
-  for (const Ball& b : balls) {
-    optional<Pretrace> np = b.pretrace(norm_ray, origin);
-    if (p == nullopt || (np && (*np).closest_point_distance_from_viewer < (*p).closest_point_distance_from_viewer)) {
-        p = np;
-    }
-  }
-  if (p == nullopt) return nullopt;
-  return (*p).ball->trace(*p, norm_ray, origin, depth);
+  P(intersection);
+  Vector distance_from_ball_vector = intersection - ball_->position_;
+
+  Vector normal = distance_from_ball_vector * ball_inv_size;
+  P(normal);
+  Vector ray_reflection = norm_ray - normal * 2 * (norm_ray * normal);
+  P(ray_reflection);
+  return compute_light(ball_->color_,
+      normal,
+      ray_reflection,
+      intersection,
+      true,
+      depth);
 }
 
-optional<Point> trace_light(const Vector& norm_ray, const Vector& origin) {
-  P(norm_ray);
+class LightTracer : public Tracer {
+  public:
+    LightTracer(float closest_point_distance_from_viewer, float distance_from_object_center2)
+      : Tracer(closest_point_distance_from_viewer, distance_from_object_center2) {}
+
+  Point trace(const Vector&, const Vector&, int) override {
+    float multiplier = ((light_size2 - distance_from_object_center2_) / light_size2);
+//    multiplier += std::max(0.f, ((light_size2/4 - distance_from_light_center2) / light_size2) * 5);
+    return light_color * multiplier * (1/(closest_point_distance_from_viewer_ * closest_point_distance_from_viewer_));
+  }
+};
+
+class std::unique_ptr<Tracer> pretrace_light(const Vector& norm_ray, const Vector& origin) {
   Vector light_vector = light_pos - origin;
   float light_distance2 = light_vector * light_vector;
 
   float closest_point_distance_from_origin = norm_ray * light_vector;
   if (closest_point_distance_from_origin < 0) {
-    return nullopt;
+    return nullptr;
   }
 
   P(closest_point_distance_from_origin);
   float distance_from_light_center2 = light_distance2 -
     closest_point_distance_from_origin * closest_point_distance_from_origin;
   if (distance_from_light_center2 > light_size2) {
-    return nullopt;
+    return nullptr;
   }
-
-  float multiplier = ((light_size2 - distance_from_light_center2) / light_size2);
-  multiplier += std::max(0.f, ((light_size2/4 - distance_from_light_center2) / light_size2) * 5);
-  return light_color * (multiplier/light_distance2);
+  return std::make_unique<LightTracer>(closest_point_distance_from_origin, distance_from_light_center2);
 }
 
-Point ball_light(
-    const Point& color,
-    const Vector& normal,
-    const Vector& reflection,
-    const Point& point,
-    int depth) {
-  Vector full_color = color * 0.0;
-  if (depth > 0) {
-    auto second_ray = trace(reflection, point, depth - 1);
-    if (second_ray) {
-      full_color += color.mul(*second_ray) * ray_attenuation;
+std::vector<Ball> balls = {
+  {{0, 0.7f * ball_size, ball_size}, {1, 0.01, 0.01}},
+  {{-2 * ball_size, 0, ball_size}, {0.01, 1.0, 0.01}},
+  {{2 * ball_size, 0, ball_size}, {1.00, 0.00, 1.}},
+  {{2 * ball_size, 0, ball_size}, {1.00, 1.00, 1.}},
+};
+
+optional<Point> trace_objects(const Vector& norm_ray, const Vector& origin, int depth) {
+  std::unique_ptr<Tracer> tracer;
+  for (const Ball& b : balls) {
+    std::unique_ptr<Tracer> t = b.pretrace(norm_ray, origin);
+    if (tracer == nullptr || (t != nullptr
+          && t->closest_point_distance_from_viewer_ < tracer->closest_point_distance_from_viewer_)) {
+        tracer = std::move(t);
     }
   }
-
-  // TODO(vol): light is one point now
-  Vector light_from_point = light_pos - point;
-  float angle = light_from_point * normal;
-  P(angle);
-  if (angle < 0) {
-    // No difuse color
-    return full_color;
-  }
-
-  float light_distance2 = light_from_point.size2();
-  P(light_distance2);
-  Vector light_from_point_norm = light_from_point * (1/sqrt(light_distance2));
-
-  float visibility_level = 1;
-  for (const Ball& b : balls) {
-    visibility_level *= 1 - b.obstracted_by_ball(point, light_from_point_norm, light_distance2);
-  }
-  if (visibility_level < 0.01) {
-    return full_color;
-  }
-
-  Vector defuse_color = color.mul(light_color) * (visibility_level * angle * defuse_attenuation/light_distance2);
-  full_color += defuse_color;
-  return full_color;
+  std::unique_ptr<Tracer> t = pretrace_light(norm_ray, origin);
+    if (tracer == nullptr || (t != nullptr
+          && t->closest_point_distance_from_viewer_ < tracer->closest_point_distance_from_viewer_)) {
+      tracer = std::move(t);
+    }
+  if (tracer == nullptr) return nullopt;
+  return tracer->trace(norm_ray, origin, depth);
 }
 
-Point floor_light(
+Point compute_light(
     const Point& color,
     const Point& normal,
     const Point& point,
-    const Point& reflection,
+    const Point& reflection_in,
+    bool rought_surface,
     int depth) {
   Vector total_color = black;
   if (depth > 0) {
-    for (int i = 0; i < max_rays[depth]; i++) {
-      Vector rand_reflection = Vector(
+    Vector reflection = reflection_in;
+    if (rought_surface) {
+      reflection = Vector(
           reflection.x + distr(gen),
           reflection.y + distr(gen),
           reflection.z + distr(gen)).normalize();
-
-      auto res = trace(rand_reflection, point, depth - 1);
-      if (res) {
-        total_color += color.mul(*res) * ray_attenuation;
-      }
     }
-    total_color *= (1. / max_rays[depth]);
+    auto second_ray = trace(reflection, point, depth - 1);
+    if (second_ray) {
+      total_color = color.mul(*second_ray) * ray_attenuation;
+    }
   }
-  Vector light_from_floor = light_pos - point;
-  float light_distance2 = light_from_floor.size2();
-  P(light_distance2);
-  Vector light_from_floor_norm = light_from_floor * (1/sqrt(light_distance2));
-  float visibility_level = 1;
-  for (const Ball& b : balls) {
-    visibility_level *= 1 - b.obstracted_by_ball(point, light_from_floor_norm, light_distance2);
-  }
-  if (visibility_level < 0.01) {
+  Vector light_rnd_pos = light_pos + Vector(light_distr(gen), light_distr(gen), light_distr(gen));
+  Vector light_from_point = light_rnd_pos - point;
+  float angle_x_distance = normal * light_from_point;
+  if (angle_x_distance < 0) {
     return total_color;
   }
-  Vector defuse_color = color.mul(light_color) * (visibility_level * defuse_attenuation * (normal * light_from_floor_norm)/light_distance2);
-  P(defuse_color);
+  float light_distance2 = light_from_point.size2();
+  float light_distance_inv = 1/sqrt(light_distance2);
+  Vector light_from_point_norm = light_from_point * light_distance_inv;
+
+  for (auto b : balls) {
+    if (b.pretrace(light_from_point_norm, point) != nullptr) {
+      // Obstracted
+      return total_color;
+    }
+  }
+
+  float angle = angle_x_distance * light_distance_inv;
+  Vector defuse_color = color.mul(light_color) * (defuse_attenuation * angle / light_distance2);
   total_color += defuse_color;
   return total_color;
 }
@@ -354,38 +295,16 @@ optional<Point> trace_room(const Vector& norm_ray, const Vector& point, int dept
 
   Point ray = norm_ray * min_dist;
   Point intersection = point + ray;
-  return floor_light(color, normal, intersection, reflection, depth);
+  return compute_light(color, normal, intersection, reflection, true, depth);
 }
-
-optional<Point> trace_floor(const Vector& norm_ray, const Vector& point, int depth) {
-
-  P(norm_ray.z);
-  if (norm_ray.z >= 0) return nullopt;
-  Point ray = norm_ray * (-point.z / norm_ray.z);
-  Point intersection = point + ray;
-  P(intersection);
-  Vector reflection = Vector(norm_ray.x, norm_ray.y, -norm_ray.z);
-  return floor_light(floor_color, floor_normal, intersection, reflection, depth);
-}
-
-optional<Point> trace_extra(const Vector& norm_ray, const Vector& point, int depth) {
-  auto floor = trace_room(norm_ray, point, depth);
-  if (floor) {
-    return floor;
-  }
-  return trace_light(norm_ray, point);
-}
-
 
 optional<Point> trace(const Vector& norm_ray, const Vector& origin, int depth) {
-  auto b = trace_ball(norm_ray, origin, depth);
+  auto b = trace_objects(norm_ray, origin, depth);
   if (b) {
     return b;
   }
-  return trace_extra(norm_ray, origin, depth);
+  return trace_room(norm_ray, origin, depth);
 }
-
-
 
 Vector sight = Vector(0., 1, -0.1).normalize();
 
@@ -500,7 +419,6 @@ void draw() {
 }
 
 int main(void) {
-    check_obstraction();
     check_saturation();
     SDL_Event event;
     SDL_Renderer *renderer;
@@ -617,11 +535,13 @@ int main(void) {
                              printf("Light size 0.1\n");
                              light_size = 0.1;
                              light_size2 = light_size * light_size;
+                             light_distr = std::normal_distribution<double>{light_size, light_size};
                              break;
                            case SDL_SCANCODE_EQUALS:
                              printf("Light size 2\n");
-                             light_size = 2;
+                             light_size = 1;
                              light_size2 = light_size * light_size;
+                             light_distr = std::normal_distribution<double>{light_size, light_size};
                              break;
                          }
         }
