@@ -157,7 +157,7 @@ Point ball_trace(const Tracer& p, const Vector& norm_ray, const Vector& origin, 
       normal,
       ray_reflection,
       intersection,
-      true,
+      false,
       depth);
 }
 
@@ -541,7 +541,7 @@ int main(void) {
                              max_depth = 3;
                              break;
                            case SDL_SCANCODE_5:
-                             max_rays = 5;
+                             max_rays = 50;
                              break;
                            case SDL_SCANCODE_6:
                              max_rays = 1;
