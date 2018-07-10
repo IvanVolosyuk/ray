@@ -6,6 +6,7 @@
 #include <GL/glext.h>
 #include <assert.h>
 #include <math.h>
+#include <algorithm>
 
 #ifndef M_PI
 # define M_PI 3.14159265358979323846  /* pi */
@@ -35,7 +36,6 @@ class BasePoint {
     inline T size() const;
     inline T size2() const;
     inline BasePoint normalize() const;
-    inline BasePoint mul(const BasePoint& v) const;
     inline float sum() const;
 
     template<class Y>
@@ -98,10 +98,16 @@ template<class T>
 BasePoint<T> operator -(const BasePoint<T>& p, const BasePoint<T>& v);
 /* vector multiply */
 template<class T>
-BasePoint<T> operator ^(const BasePoint<T>& v1, const BasePoint<T>& v2);
-/* scalar multiply */
+BasePoint<T> cross(const BasePoint<T>& v1, const BasePoint<T>& v2);
+
 template<class T>
-T operator *(const BasePoint<T>& v1, const BasePoint<T>& v2);
+T dot(const BasePoint<T>& v1, const BasePoint<T>& v2);
+
+template<class T>
+BasePoint<T> operator *(const BasePoint<T>& v1, const BasePoint<T>& v2);
+template<class T>
+BasePoint<T> operator /(const BasePoint<T>& v1, const BasePoint<T>& v2);
+
 template<class T>
 BasePoint<T> operator *(const BasePoint<T>& v, T f);
 template<class T>
@@ -232,23 +238,30 @@ inline BasePoint<T> operator +(const BasePoint<T>& p, const BasePoint<T>& v) {
 }
 
 template<class T>
-inline T operator *(const BasePoint<T>& v1, const BasePoint<T>& v2) {
+inline BasePoint<T> operator *(const BasePoint<T>& v1, const BasePoint<T>& v2) {
+    BasePoint<T> res = BasePoint<T>(v1.x * v2.x, v1.y * v2.y, v1.z * v2.z);
+    return res;
+}
+template<class T>
+inline BasePoint<T> operator /(const BasePoint<T>& v1, const BasePoint<T>& v2) {
+    BasePoint<T> res = BasePoint<T>(v1.x / v2.x, v1.y / v2.y, v1.z / v2.z);
+    return res;
+}
+
+template<class T>
+inline T dot(const BasePoint<T>& v1, const BasePoint<T>& v2) {
     T res = v1.x * v2.x + v1.y * v2.y + v1.z * v2.z;
     return res;
 }
 
 template<class T>
-inline BasePoint<T> operator ^(const BasePoint<T>& v1, const BasePoint<T>& v2) {
+inline BasePoint<T> cross(const BasePoint<T>& v1, const BasePoint<T>& v2) {
     BasePoint<T> res(v1.y * v2.z - v1.z * v2.y,
 	     -(v1.x * v2.z - v1.z * v2.x),
                v1.x * v2.y - v1.y * v2.x);
     return res;
 }
 
-template<class T>
-inline BasePoint<T> BasePoint<T>::mul(const BasePoint<T>& v) const {
-    return BasePoint<T>(x * v.x, y * v.y, z * v.z);
-}
 
 template<class T>
 inline float BasePoint<T>::sum() const {
@@ -275,6 +288,16 @@ inline bool
 BasePoint<T>::operator != (const BasePoint<T>& v) const
 {
     return (x != v.x) || (y != v.y) || (z != v.z);
+}
+
+template<class T>
+BasePoint<T> min(const BasePoint<T>& v1, const BasePoint<T>& v2) {
+  return BasePoint<T>(std::min(v1.x, v2.x), std::min(v1.y, v2.y), std::min(v1.z, v2.z));
+}
+
+template<class T>
+BasePoint<T> max(const BasePoint<T>& v1, const BasePoint<T>& v2) {
+  return BasePoint<T>(std::max(v1.x, v2.x), std::max(v1.y, v2.y), std::max(v1.z, v2.z));
 }
 
 #endif // __VECTOR_H__

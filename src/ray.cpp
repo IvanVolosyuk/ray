@@ -124,12 +124,12 @@ class Ball {
       P(norm_ray);
       Vector ball_vector = position_ - origin;
 
-      float closest_point_distance_from_viewer = norm_ray * ball_vector;
+      float closest_point_distance_from_viewer = dot(norm_ray, ball_vector);
       if (closest_point_distance_from_viewer < 0) {
         return nullopt;
       }
 
-      float ball_distance2 = ball_vector * ball_vector;
+      float ball_distance2 = ball_vector.size2();
       float distance_from_object_center2 = ball_distance2 -
         closest_point_distance_from_viewer * closest_point_distance_from_viewer;
       if (distance_from_object_center2 > ball_size2) {
@@ -150,7 +150,7 @@ Point ball_trace(const Tracer& p, const Vector& norm_ray, const Vector& origin, 
 
   Vector normal = distance_from_ball_vector * ball_inv_size;
   P(normal);
-  Vector ray_reflection = norm_ray - normal * (2 * (norm_ray * normal));
+  Vector ray_reflection = norm_ray - normal * (2 * dot(norm_ray, normal));
   P(ray_reflection);
   return compute_light(p.ball_->color_,
       normal,
@@ -167,9 +167,9 @@ Point light_trace(const Tracer& p, int depth, float distance_from_eye) {
 
 class optional<Tracer> pretrace_light(const Vector& norm_ray, const Vector& origin) {
   Vector light_vector = light_pos - origin;
-  float light_distance2 = light_vector * light_vector;
+  float light_distance2 = light_vector.size2();
 
-  float closest_point_distance_from_origin = norm_ray * light_vector;
+  float closest_point_distance_from_origin = dot(norm_ray, light_vector);
   if (closest_point_distance_from_origin < 0) {
     return nullopt;
   }
@@ -224,12 +224,12 @@ Point compute_light(
     }
     auto second_ray = trace(reflection, point, depth - 1, distance_from_eye);
     if (second_ray) {
-      total_color = color.mul(*second_ray) * defuse_attenuation;
+      total_color = (color * *second_ray) * defuse_attenuation;
     }
   }
   Vector light_rnd_pos = light_pos + light_distr();
   Vector light_from_point = light_rnd_pos - point;
-  float angle_x_distance = normal * light_from_point;
+  float angle_x_distance = dot(normal, light_from_point);
   if (angle_x_distance < 0) {
     return total_color;
   }
@@ -250,7 +250,7 @@ Point compute_light(
 
   float angle = angle_x_distance * light_distance_inv;
   float total_distance = light_distance + distance_from_eye;
-  Vector defuse_color = color.mul(light_color) * (angle / (total_distance * total_distance)) * defuse_attenuation;
+  Vector defuse_color = (color * light_color) * (angle / (total_distance * total_distance) * defuse_attenuation);
   total_color += defuse_color;
   return total_color;
 }
@@ -264,6 +264,15 @@ float wall_y0 = -room_size;
 float wall_y1 = room_size;
 
 optional<Point> trace_room(const Vector& norm_ray, const Vector& point, int depth, float distance_from_eye) {
+//  Point room_a(wall_x0, wall_y0, 0);
+//  Point room_b(wall_x1, wall_y1, ceiling_z);
+//  Point tMin = (room_a - point) / norm_ray;
+//  Point tMax = (room_b - point) / norm_ray;
+//  Point t1 = min(dist_a, dist_b);
+//  Point t2 = max(dist_a, dist_b);
+//  float tNear = max(max(t1.x, t1.y), t1.z);
+//  float tFar = min(min(t2.x, t2.y), t2.z);
+
   float dist_x, dist_y, dist_z;
   if (norm_ray.z >= 0) {
     // trace ceiling
@@ -334,7 +343,7 @@ Vector sight = Vector(0., 1, -0.1).normalize();
 float dx = 1.9 / WINDOW_WIDTH;
 
 Vector sight_x = Vector(dx, 0, 0);
-Vector sight_y = (sight ^ sight_x).normalize() * dx;
+Vector sight_y = cross(sight, sight_x).normalize() * dx;
 
 // Sort objects by distance / obstraction possibility
 Uint8 colorToInt(float c) {
@@ -511,13 +520,13 @@ int main(void) {
       if (turn_left || turn_right) {
         trace_values = true;
         P(sight);
-        sight = (((sight ^ Vector(0.f,0.f,turn_left ? -1.f : 1.f)) * (0.001f * dt) + sight)).normalize();
+        sight = (((cross(sight, Vector(0.f,0.f,turn_left ? -1.f : 1.f))) * (0.001f * dt) + sight)).normalize();
         P(sight);
         P(sight_x);
-        sight_x = sight ^ Vector(0.f,0.f,dx);
+        sight_x = cross(sight, Vector(0.f,0.f,dx));
         P(sight_x);
         P(sight_y);
-        sight_y = (sight ^ sight_x).normalize() * dx;
+        sight_y = cross(sight, sight_x).normalize() * dx;
         P(sight_y);
         moved = true;
       }
