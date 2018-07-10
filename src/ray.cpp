@@ -13,8 +13,8 @@
 #include <algorithm>
 #include <random>
 
-#define WINDOW_WIDTH 600
-#define WINDOW_HEIGHT 600
+#define WINDOW_WIDTH 500
+#define WINDOW_HEIGHT 500
 
 //#define P(x) print(#x, x);
 #define P(x) {}
@@ -29,6 +29,7 @@ float light_size = 0.9;
 float light_power = 50.4;
 Point light_color = Point(light_power, light_power, light_power);
 float light_size2 = light_size * light_size;
+float light_inv_size = 1 / light_size;
 
 float ball_size = 0.9;
 float ball_size2 = ball_size * ball_size;
@@ -45,6 +46,8 @@ int max_depth = 2;
 
 std::random_device rd;
 std::mt19937 gen(rd());
+std::normal_distribution<> lense_gen{-22.2,22.2};
+
 std::normal_distribution<> wall_gen{-0.02,0.02};
 std::normal_distribution<> light_gen{light_size, light_size};
 
@@ -161,8 +164,15 @@ Point ball_trace(const Tracer& p, const Vector& norm_ray, const Vector& origin, 
       distance_from_eye + distance_from_origin);
 }
 
-Point light_trace(const Tracer& p, int depth, float distance_from_eye) {
-  return light_color * (1/(distance_from_eye * distance_from_eye));
+Point light_trace(const Tracer& p, Vector norm_ray, Point origin, int depth, float distance_from_eye) {
+  float distance_from_origin = p.closest_point_distance_from_viewer_ - sqrt(ball_size2 - p.distance_from_object_center2_);
+  Point intersection = origin + norm_ray * distance_from_origin;
+  Vector distance_from_light_vector = intersection - light_pos;
+
+  Vector normal = distance_from_light_vector * light_inv_size;
+  float angle = -dot(norm_ray, normal);
+
+  return light_color * (angle / (distance_from_eye * distance_from_eye));
 }
 
 class optional<Tracer> pretrace_light(const Vector& norm_ray, const Vector& origin) {
@@ -200,7 +210,7 @@ optional<Point> trace_objects(const Vector& norm_ray, const Vector& origin, int 
   }
   optional<Tracer> t = pretrace_light(norm_ray, origin);
   if (t && (tracer == nullopt || t->closest_point_distance_from_viewer_ < tracer->closest_point_distance_from_viewer_)) {
-    return light_trace(*t, depth, distance_from_eye);
+    return light_trace(*t, norm_ray, origin, depth, distance_from_eye);
   }
   if (tracer != nullopt) {
     return ball_trace(*tracer, norm_ray, origin, depth, distance_from_eye);
@@ -227,6 +237,10 @@ Point compute_light(
       total_color = (color * *second_ray) * defuse_attenuation;
     }
   }
+  if (!rought_surface) {
+    return total_color;
+  }
+
   Vector light_rnd_pos = light_pos + light_distr();
   Vector light_from_point = light_rnd_pos - point;
   float angle_x_distance = dot(normal, light_from_point);
@@ -385,6 +399,7 @@ bool accumulate = true;
 int num_running = 0;
 BasePoint<double>* fppixels;
 Uint8* pixels;
+float focused_distance = 4;
 
 
 void drawThread(int id) {
@@ -401,9 +416,13 @@ void drawThread(int id) {
     if (y % numCPU == id) {
       Vector ray = yray;
       for (int x = 0; x < WINDOW_WIDTH; x++) {
-        Vector norm_ray = ray.normalize();
+        Vector norm_ray = ray;
+        Vector focused_point = viewer + norm_ray * focused_distance;
+        Vector me = viewer + sight_x * (float)lense_gen(gen) + sight_y * (float)lense_gen(gen);
+        Vector new_ray = (focused_point - me).normalize();
+
         trace_values = x == 500 && y == 500;
-        auto res = trace(norm_ray, viewer, max_depth, 0);
+        auto res = trace(new_ray, me, max_depth, 0);
         if (accumulate) {
           *my_fppixels = BasePoint<double>::convert(*my_fppixels) * base_mul + BasePoint<double>::convert(*res) * one_mul;
           res = BasePoint<float>::convert(*my_fppixels++);
@@ -512,8 +531,8 @@ int main(void) {
         Vector move = sight;
         move.z = 0;
         viewer += move * (0.001f * dt * (move_forward ? 1 : -1));
-        balls.back().position_ = viewer;
-        balls.back().position_.z = ball_size;
+        //balls.back().position_ = viewer;
+        //balls.back().position_.z = ball_size;
         moved = true;
       }
 
@@ -591,13 +610,14 @@ int main(void) {
                              if (event.key.state != SDL_PRESSED) start_accumulate();
                              break;
                            case SDL_SCANCODE_9:
-                             wall_gen = std::normal_distribution<double>{-0.3,0.3};
+                             wall_gen = std::normal_distribution<double>{-0.8,0.8};
                              if (event.key.state != SDL_PRESSED) start_accumulate();
                              break;
                            case SDL_SCANCODE_MINUS:
                              printf("Light size 0.1\n");
                              light_size = 0.1;
                              light_size2 = light_size * light_size;
+                             light_inv_size = 1 / light_size;
                              light_gen = std::normal_distribution<double>{light_size, light_size};
                              if (event.key.state != SDL_PRESSED) start_accumulate();
                              break;
@@ -605,6 +625,7 @@ int main(void) {
                              printf("Light size 2\n");
                              light_size = 0.9;
                              light_size2 = light_size * light_size;
+                             light_inv_size = 1 / light_size;
                              light_gen = std::normal_distribution<double>{light_size, light_size};
                              if (event.key.state != SDL_PRESSED) start_accumulate();
                              break;
