@@ -11,31 +11,38 @@
 # define M_PI 3.14159265358979323846  /* pi */
 #endif
 
-class Point {
-    public:
-    GLfloat x, y, z;
-    static const constexpr GLfloat w = 1;
-    inline Point() { x = y = z = 0; }
-    inline Point(const Point& v);
-    inline Point(GLfloat x, GLfloat y, GLfloat z);
+template<class T>
+class BasePoint {
+  public:
+    using Value = T;
+    T x, y, z;
+    static const constexpr T w = 1;
+    inline BasePoint() { x = y = z = 0; }
+
+    inline BasePoint(const BasePoint<T>& v);
+
+    inline BasePoint(T x, T y, T z);
+    inline ~BasePoint() = default;
     void print() const;
 
-    inline Point& operator =(const Point &v);
-    inline Point& operator +=(const Point& v);
-    inline Point& operator -=(const Point& v);
-    inline Point& operator *=(const GLfloat f);
-    inline Point operator -() const;
-    inline bool operator == (const Point& v) const;
-    inline bool operator != (const Point& v) const;
-    inline GLfloat size() const;
-    inline GLfloat size2() const;
-    inline Point normalize() const;
-    inline Point mul(const Point& v) const;
+    inline BasePoint& operator =(const BasePoint &v);
+    inline BasePoint& operator +=(const BasePoint& v);
+    inline BasePoint& operator -=(const BasePoint& v);
+    inline BasePoint& operator *=(const T f);
+    inline BasePoint operator -() const;
+    inline bool operator == (const BasePoint& v) const;
+    inline bool operator != (const BasePoint& v) const;
+    inline T size() const;
+    inline T size2() const;
+    inline BasePoint normalize() const;
+    inline BasePoint mul(const BasePoint& v) const;
     inline float sum() const;
 
-    friend inline Point operator ^(const Point& v1, const Point& v2);
-    friend inline GLfloat operator *(const Point& v1, const Point& v2);
+    template<class Y>
+    static inline BasePoint<T> convert(const BasePoint<Y>& from);
 };
+
+using Point = BasePoint<float>;
 
 class Matrix;
 static inline void glMultMatrix(const Matrix& m);
@@ -79,18 +86,28 @@ class Matrix {
     friend Point operator *(const Matrix &m, const Point& v);
 };
 
-Point operator -(const Point& p1, const Point& p2);
-Point  operator +(const Point& p, const Point& v);
-Point  operator -(const Point& p, const Point& v);
-Point operator +(const Point& p, const Point& v);
-Point operator -(const Point& p, const Point& v);
+template<class T>
+BasePoint<T> operator -(const BasePoint<T>& p1, const BasePoint<T>& p2);
+template<class T>
+BasePoint<T> operator +(const BasePoint<T>& p, const BasePoint<T>& v);
+template<class T>
+BasePoint<T> operator -(const BasePoint<T>& p, const BasePoint<T>& v);
+template<class T>
+BasePoint<T> operator +(const BasePoint<T>& p, const BasePoint<T>& v);
+template<class T>
+BasePoint<T> operator -(const BasePoint<T>& p, const BasePoint<T>& v);
 /* vector multiply */
-Point operator ^(const Point& v1, const Point& v2);
+template<class T>
+BasePoint<T> operator ^(const BasePoint<T>& v1, const BasePoint<T>& v2);
 /* scalar multiply */
-GLfloat operator *(const Point& v1, const Point& v2);
-Point operator *(const Point& v, GLfloat f);
-Point operator *(const Matrix &m, const Point& v);
-Point operator *(const Matrix &m, const Point& v);
+template<class T>
+T operator *(const BasePoint<T>& v1, const BasePoint<T>& v2);
+template<class T>
+BasePoint<T> operator *(const BasePoint<T>& v, T f);
+template<class T>
+BasePoint<T> operator *(const Matrix &m, const BasePoint<T>& v);
+template<class T>
+BasePoint<T> operator *(const Matrix &m, const Point& v);
 
 /***** INLINE FUNCTIONS ********/
 
@@ -124,124 +141,138 @@ glLoadMatrix(const Matrix& m) {
     glLoadMatrixf(m.data);
 }
 
-inline Point::Point(GLfloat nx, GLfloat ny, GLfloat nz) {
+template<class T>
+inline BasePoint<T>::BasePoint(const T nx, const T ny, const T nz) {
     x = nx;
     y = ny;
     z = nz;
 }
 
-inline Point::Point(const Point& p) {
+template<class T>
+inline BasePoint<T>::BasePoint(const BasePoint<T>& p) {
     x = p.x;
     y = p.y;
     z = p.z;
 }
 
-inline Point
-Point::operator -() const {
-    return Point(-x, -y, -z);
+template<class T>
+template<class Y>
+inline BasePoint<T> BasePoint<T>::convert(const BasePoint<Y>& p) {
+  return BasePoint<T>(p.x, p.y, p.z);
 }
 
-inline Point&
-Point::operator +=(const Point& v) {
+template<class T>
+inline BasePoint<T> BasePoint<T>::operator -() const {
+    return BasePoint<T>(-x, -y, -z);
+}
+
+template<class T>
+inline BasePoint<T>& BasePoint<T>::operator +=(const BasePoint<T>& v) {
     x += v.x;
     y += v.y;
     z += v.z;
     return *this;
 }
 
-inline Point&
-Point::operator -=(const Point& v) {
+template<class T>
+inline BasePoint<T>& BasePoint<T>::operator -=(const BasePoint<T>& v) {
     x -= v.x;
     y -= v.y;
     z -= v.z;
     return *this;
 }
 
-inline Point&
-Point::operator =(const Point& p) {
+template<class T>
+inline BasePoint<T>& BasePoint<T>::operator =(const BasePoint<T>& p) {
     x = p.x;
     y = p.y;
     z = p.z;
     return *this;
 }
 
-inline Point&
-Point::operator *=(const GLfloat f) {
+template<class T>
+inline BasePoint<T>& BasePoint<T>::operator *=(const T f) {
     x *= f;
     y *= f;
     z *= f;
     return *this;
 }
 
-inline GLfloat
-Point::size2() const {
+template<class T>
+inline T BasePoint<T>::size2() const {
     return x*x + y*y + z*z;
 }
 
-inline GLfloat
-Point::size() const {
+template<class T>
+inline T BasePoint<T>::size() const {
     return sqrt(x*x + y*y + z*z);
 }
 
-inline Point
-Point::normalize() const {
-    GLfloat sz = size();
-    sz = 1.f/sz;
-    Point res(x * sz, y * sz, z * sz);
+template<class T>
+inline BasePoint<T> BasePoint<T>::normalize() const {
+    T sz = size();
+    sz = w/sz;
+    BasePoint<T> res(x * sz, y * sz, z * sz);
     return res;
 }
 
-inline Point
-operator -(const Point& p1, const Point& p2) {
-    Point res(p1.x - p2.x,
-	       p1.y - p2.y,
-	       p1.z - p2.z);
+template<class T>
+inline BasePoint<T> operator -(const BasePoint<T>& p1, const BasePoint<T>& p2) {
+    BasePoint<T> res(p1.x - p2.x,
+	             p1.y - p2.y,
+	             p1.z - p2.z);
     return res;
 }
 
 
-inline Point
-operator +(const Point& p, const Point& v) {
-    Point res(p);
+template<class T>
+inline BasePoint<T> operator +(const BasePoint<T>& p, const BasePoint<T>& v) {
+    BasePoint<T> res(p);
     return res+=v;
 }
 
-inline GLfloat
-operator *(const Point& v1, const Point& v2) {
-    GLfloat res = v1.x * v2.x + v1.y * v2.y + v1.z * v2.z;
+template<class T>
+inline T operator *(const BasePoint<T>& v1, const BasePoint<T>& v2) {
+    T res = v1.x * v2.x + v1.y * v2.y + v1.z * v2.z;
     return res;
 }
-inline Point
-operator ^(const Point& v1, const Point& v2) {
-    Point res(v1.y * v2.z - v1.z * v2.y,
+
+template<class T>
+inline BasePoint<T> operator ^(const BasePoint<T>& v1, const BasePoint<T>& v2) {
+    BasePoint<T> res(v1.y * v2.z - v1.z * v2.y,
 	     -(v1.x * v2.z - v1.z * v2.x),
                v1.x * v2.y - v1.y * v2.x);
     return res;
 }
 
-inline Point Point::mul(const Point& v) const {
-    return Point(x * v.x, y * v.y, z * v.z);
+template<class T>
+inline BasePoint<T> BasePoint<T>::mul(const BasePoint<T>& v) const {
+    return BasePoint<T>(x * v.x, y * v.y, z * v.z);
 }
 
-inline float Point::sum() const {
+template<class T>
+inline float BasePoint<T>::sum() const {
     return x + y + z;
 }
 
-inline Point
-operator *(const Point& v, GLfloat f) {
-    Point res(v);
+template<class T>
+inline BasePoint<T> operator *(const BasePoint<T>& v, T f) {
+    BasePoint<T> res(v);
     return res*=f;
 }
 
+template<class T>
 inline bool
-Point::operator == (const Point& v) const
+BasePoint<T>::operator == (const BasePoint<T>& v) const
 {
     return ((x > v.x * 0.99) || (x < v.x * 1.01))
         && ((y > v.y * 0.99) || (y < v.y * 1.01))
         && ((z > v.z * 0.99) || (z < v.z * 1.01));
 }
+
+template<class T>
 inline bool
-Point::operator != (const Point& v) const
+BasePoint<T>::operator != (const BasePoint<T>& v) const
 {
     return (x != v.x) || (y != v.y) || (z != v.z);
 }

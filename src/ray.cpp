@@ -2,6 +2,7 @@
 #include <vector>
 #include <thread>
 #include <mutex>
+#include <stdlib.h>
 #include <condition_variable>
 
 #include "ray.hpp"
@@ -41,7 +42,6 @@ Vector floor_normal(0, 0, 1);
 float ray_attenuation = 0.6;
 float defuse_attenuation = 0.4;
 
-int max_rays = 1;
 int max_depth = 2;
 
 std::random_device rd;
@@ -83,8 +83,7 @@ Vector light_distr() {
       ((x>>24) & 0xFFFF) * (1./0x10000));
 }
 
-int numCPU = sysconf(_SC_NPROCESSORS_ONLN);
-
+int numCPU = 0;
 
 void print(const char* msg, const Vector& v) {
   if (trace_values)
@@ -151,7 +150,7 @@ Point ball_trace(const Tracer& p, const Vector& norm_ray, const Vector& origin, 
 
   Vector normal = distance_from_ball_vector * ball_inv_size;
   P(normal);
-  Vector ray_reflection = norm_ray - normal * 2 * (norm_ray * normal);
+  Vector ray_reflection = norm_ray - normal * (2 * (norm_ray * normal));
   P(ray_reflection);
   return compute_light(p.ball_->color_,
       normal,
@@ -237,11 +236,16 @@ Point compute_light(
   float light_distance2 = light_from_point.size2();
   float light_distance_inv = 1/sqrt(light_distance2);
   Vector light_from_point_norm = light_from_point * light_distance_inv;
+  optional<float> light_distance;
 
   for (auto b : balls) {
-    if (b.pretrace(light_from_point_norm, point) != nullopt) {
-      // Obstracted
-      return total_color;
+    auto res = b.pretrace(light_from_point_norm, point);
+    if (res != nullopt) {
+      if (!light_distance) light_distance = 1/light_distance_inv;
+      if (res->closest_point_distance_from_viewer_< *light_distance) {
+        // Obstracted
+        return total_color;
+      }
     }
   }
 
@@ -325,17 +329,6 @@ optional<Point> trace(const Vector& norm_ray, const Vector& origin, int depth) {
   return trace_room(norm_ray, origin, depth);
 }
 
-optional<Point> trace_all(const Vector& norm_ray, const Vector& origin, int depth) {
-  Point res = black;
-  for (int i = 0; i < max_rays; i++) {
-    auto p = trace(norm_ray, origin, depth);
-    if (p) {
-      res += *p;
-    }
-  }
-  return res * (1./max_rays);
-}
-
 Vector sight = Vector(0., 1, -0.1).normalize();
 
 float dx = 1.9 / WINDOW_WIDTH;
@@ -377,15 +370,22 @@ std::vector<std::thread> threads;
 std::mutex m;
 std::condition_variable cv;
 int frame = 0;
+int base_frame = 0;
 bool die = false;
+bool accumulate = true;
 int num_running = 0;
-Uint8 *pixels;
+BasePoint<double>* fppixels;
+Uint8* pixels;
 
 
 void drawThread(int id) {
-  Vector yoffset = sight_y * (WINDOW_HEIGHT / 2);
-  Vector xoffset = sight_x * (WINDOW_WIDTH / 2);
+  Vector yoffset = sight_y * (float)(WINDOW_HEIGHT / 2);
+  Vector xoffset = sight_x * (float)(WINDOW_WIDTH / 2);
   Uint8* my_pixels = pixels;
+  BasePoint<double>* my_fppixels = fppixels;
+  float num_frames = frame - base_frame;
+  double base_mul = (num_frames - 1) / num_frames;
+  double one_mul = 1 / num_frames;
 
   Vector yray = sight - yoffset - xoffset;
   for (int y = 0; y < WINDOW_HEIGHT; y++) {
@@ -394,7 +394,11 @@ void drawThread(int id) {
       for (int x = 0; x < WINDOW_WIDTH; x++) {
         Vector norm_ray = ray.normalize();
         trace_values = x == 500 && y == 500;
-        auto res = trace_all(norm_ray, viewer, max_depth);
+        auto res = trace(norm_ray, viewer, max_depth);
+        if (accumulate) {
+          *my_fppixels = BasePoint<double>::convert(*my_fppixels) * base_mul + BasePoint<double>::convert(*res) * one_mul;
+          res = BasePoint<float>::convert(*my_fppixels++);
+        }
         if (res) {
           Vector saturated = saturateColor(*res);
           *my_pixels++ = colorToInt(saturated.x);
@@ -406,6 +410,7 @@ void drawThread(int id) {
       }
     } else {
       my_pixels += WINDOW_WIDTH * 4;
+      my_fppixels += WINDOW_WIDTH;
     }
     yray += sight_y;
   }
@@ -450,8 +455,22 @@ void draw() {
     cv.wait(lk, []{return num_running == 0;});
   }
 }
+void start_accumulate() {
+  accumulate = true;
+  memset(fppixels, 0, WINDOW_WIDTH * WINDOW_HEIGHT * sizeof(BasePoint<double>));
+  base_frame = frame;
+//  printf("start accumulate\n");
+}
 
 int main(void) {
+    const char* cpus = getenv("NUM_CPUS");
+    if (cpus != nullptr) {
+      numCPU = atoi(cpus);
+    }
+    if (numCPU == 0) {
+      numCPU = sysconf(_SC_NPROCESSORS_ONLN);
+    }
+    printf("Num CPUs: %d\n", numCPU);
     check_saturation();
     SDL_Event event;
     SDL_Renderer *renderer;
@@ -464,6 +483,7 @@ int main(void) {
     SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255);
     SDL_Texture * texture = SDL_CreateTexture(renderer,
                 SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STATIC, WINDOW_WIDTH, WINDOW_HEIGHT);
+    fppixels = new BasePoint<double>[WINDOW_WIDTH * WINDOW_HEIGHT];
     pixels = new Uint8[WINDOW_WIDTH * WINDOW_HEIGHT * 4];
 
     SDL_RenderPresent(renderer);
@@ -476,31 +496,37 @@ int main(void) {
     while (1) {
       unsigned int newTime = SDL_GetTicks();
       unsigned int dt = newTime - currentTime;
+
+      bool moved = false;
+
       if (move_forward || move_backward) {
         Vector move = sight;
         move.z = 0;
-        viewer += move * (0.001 * dt * (move_forward ? 1 : -1));
+        viewer += move * (0.001f * dt * (move_forward ? 1 : -1));
         balls.back().position_ = viewer;
         balls.back().position_.z = ball_size;
+        moved = true;
       }
 
       if (turn_left || turn_right) {
         trace_values = true;
         P(sight);
-        sight = (((sight ^ Vector(0,0,turn_left ? -1 : 1)) * (0.001 * dt) + sight)).normalize();
+        sight = (((sight ^ Vector(0.f,0.f,turn_left ? -1.f : 1.f)) * (0.001f * dt) + sight)).normalize();
         P(sight);
         P(sight_x);
-        sight_x = sight ^ Vector(0,0,dx);
+        sight_x = sight ^ Vector(0.f,0.f,dx);
         P(sight_x);
         P(sight_y);
         sight_y = (sight ^ sight_x).normalize() * dx;
         P(sight_y);
+        moved = true;
       }
+      if (moved) start_accumulate();
 
       while(SDL_PollEvent(&event)) {
         switch (event.type) {
           case SDL_QUIT:
-            exit(0);
+            goto exit;
             break;
           case SDL_MOUSEBUTTONUP:
                          if (event.button.button == SDL_BUTTON_LEFT)
@@ -510,14 +536,14 @@ int main(void) {
                          if (event.button.button == SDL_BUTTON_LEFT)
                            move_forward = true;
                          break;
-          case SDL_KEYDOWN:
           case SDL_KEYUP:
+          case SDL_KEYDOWN:
                          switch (event.key.keysym.scancode) {
                            case SDL_SCANCODE_ESCAPE:
                              die = true;
                              draw();
                              for (auto& t : threads) t.join();
-                             exit(0);
+                             goto exit;
                            case SDL_SCANCODE_W:
                              move_forward = event.key.state == SDL_PRESSED;
                              break;
@@ -532,40 +558,46 @@ int main(void) {
                              turn_right = event.key.state == SDL_PRESSED;
                              break;
                            case SDL_SCANCODE_1:
-                             max_depth = 1;
+                             max_depth = 0;
+                             if (event.key.state != SDL_PRESSED) start_accumulate();
                              break;
                            case SDL_SCANCODE_2:
-                             max_depth = 2;
+                             max_depth = 1;
+                             if (event.key.state != SDL_PRESSED) start_accumulate();
                              break;
                            case SDL_SCANCODE_3:
+                             max_depth = 2;
+                             if (event.key.state != SDL_PRESSED) start_accumulate();
+                             break;
+                           case SDL_SCANCODE_4:
                              max_depth = 3;
-                             break;
-                           case SDL_SCANCODE_5:
-                             max_rays = 50;
-                             break;
-                           case SDL_SCANCODE_6:
-                             max_rays = 1;
+                             if (event.key.state != SDL_PRESSED) start_accumulate();
                              break;
                            case SDL_SCANCODE_7:
                              wall_gen = std::normal_distribution<double>{-0.00,0.00};
+                             if (event.key.state != SDL_PRESSED) start_accumulate();
                              break;
                            case SDL_SCANCODE_8:
                              wall_gen = std::normal_distribution<double>{-0.03,0.03};
+                             if (event.key.state != SDL_PRESSED) start_accumulate();
                              break;
                            case SDL_SCANCODE_9:
                              wall_gen = std::normal_distribution<double>{-0.3,0.3};
+                             if (event.key.state != SDL_PRESSED) start_accumulate();
                              break;
                            case SDL_SCANCODE_MINUS:
                              printf("Light size 0.1\n");
                              light_size = 0.1;
                              light_size2 = light_size * light_size;
                              light_gen = std::normal_distribution<double>{light_size, light_size};
+                             if (event.key.state != SDL_PRESSED) start_accumulate();
                              break;
                            case SDL_SCANCODE_EQUALS:
                              printf("Light size 2\n");
                              light_size = 1;
                              light_size2 = light_size * light_size;
                              light_gen = std::normal_distribution<double>{light_size, light_size};
+                             if (event.key.state != SDL_PRESSED) start_accumulate();
                              break;
                          }
         }
@@ -578,6 +610,7 @@ int main(void) {
       event.type = -1;
       currentTime = newTime;
     }
+exit:
     SDL_DestroyRenderer(renderer);
     SDL_DestroyWindow(window);
     SDL_Quit();

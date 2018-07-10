@@ -1,7 +1,9 @@
 PROF=-ggdb -pg -no-pie
-LDFLAGS=-L/usr/local/X11R6/lib -lGL -lglut -lSDL2 -lpthread 
+PROF_GEN=-fprofile-generate
+PROF_USE=-fprofile-use
+LDFLAGS=-L/usr/local/X11R6/lib -lGL -lglut -lSDL2 -lpthread $(PROF_USE)
 CFLAGS+=-I../src -ggdb
-CXXFLAGS+=-I../src -ggdb -I/usr/include/SDL2 -std=c++17 -O3
+CXXFLAGS+=-I../src -ggdb -I/usr/include/SDL2 -std=c++17 -O3 $(PROF_USE)
 
 vpath %.cpp ../src
 vpath %.hpp ../src

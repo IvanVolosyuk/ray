@@ -3,8 +3,14 @@
 
 #include "vector.hpp"
 
-void
-Point::print() const {
+template<>
+void BasePoint<float>::print() const {
+    printf("Point(%f, %f, %f)", x, y, z);
+    fflush(stdout);
+}
+
+template<>
+void BasePoint<double>::print() const {
     printf("Point(%f, %f, %f)", x, y, z);
     fflush(stdout);
 }
