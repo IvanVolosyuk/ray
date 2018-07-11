@@ -53,6 +53,7 @@ std::uniform_real_distribution<float> reflect_gen{0.f, 1.f};
 
 std::normal_distribution<float> wall_gen{-0.8,0.8};
 std::normal_distribution<float> light_gen{light_size, light_size};
+std::normal_distribution<float> antialiasing{-0.5,0.5};
 
 float room_size = 6;
 float ceiling_z = room_size;
@@ -542,7 +543,7 @@ void drawThread(int id) {
     if (y % numCPU == id) {
       Vector ray = yray;
       for (int x = 0; x < window_width; x++) {
-        Vector norm_ray = ray;
+        Vector norm_ray = ray + sight_x * antialiasing(gen) + sight_y * antialiasing(gen);
         Vector focused_point = viewer + norm_ray * focused_distance;
         Vector me = viewer + sight_x.normalize() * (float)lense_gen(gen) + sight_y.normalize() * (float)lense_gen(gen);
         Vector new_ray = (focused_point - me).normalize();
