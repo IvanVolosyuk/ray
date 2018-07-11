@@ -13,9 +13,6 @@
 #include <algorithm>
 #include <random>
 
-#define WINDOW_WIDTH 500
-#define WINDOW_HEIGHT 500
-
 //#define P(x) print(#x, x);
 #define P(x) {}
 
@@ -23,6 +20,9 @@
 using Vector = Point;
 #define optional boost::optional
 #define nullopt boost::none
+
+int window_width = 480;
+int window_height = 270;
 
 Point light_pos = Point(-4.2, -3, 2);
 float light_size = 0.9;
@@ -46,10 +46,20 @@ int max_depth = 2;
 
 std::random_device rd;
 std::mt19937 gen(rd());
-std::normal_distribution<> lense_gen{-22.2,22.2};
+float focused_distance = 1;
+float lense_blur = 0.01;
+std::normal_distribution<float> lense_gen{-lense_blur,lense_blur};
+std::uniform_real_distribution<float> reflect_gen{0.f, 1.f};
 
-std::normal_distribution<> wall_gen{-0.02,0.02};
-std::normal_distribution<> light_gen{light_size, light_size};
+std::normal_distribution<float> wall_gen{-0.8,0.8};
+std::normal_distribution<float> light_gen{light_size, light_size};
+
+float room_size = 6;
+float ceiling_z = room_size;
+float wall_x0 = -room_size;
+float wall_x1 = room_size;
+float wall_y0 = -room_size;
+float wall_y1 = room_size;
 
 static unsigned long x=123456789, y=362436069, z=521288629;
 
@@ -97,6 +107,11 @@ void print(const char* msg, float v) {
     printf("%s: %f\n", msg, v);
 }
 
+void print(const char*, const char* v) {
+  if (trace_values)
+    printf("%s\n", v);
+}
+
 void assert_norm(const Vector& v) {
   float s = v.size();
   assert(s > 0.99);
@@ -111,19 +126,44 @@ Point compute_light(const Point& color, const Vector& normal, const Vector& refl
 
 class Ball;
 
-class Tracer {
+class Hit {
   public:
     const Ball *ball_;
     float closest_point_distance_from_viewer_;
     float distance_from_object_center2_;
 };
 
+// Glass refraction index
+float glass_refraction_index = 1.492; //1.458;
+float OBJECT_REFLECTIVITY = 0;
+
+float FresnelReflectAmount (float n1, float n2, Vector normal, Vector incident) {
+        // Schlick aproximation
+        float r0 = (n1-n2) / (n1+n2);
+        r0 *= r0;
+        float cosX = -dot(normal, incident);
+        if (n1 > n2)
+        {
+            float n = n1/n2;
+            float sinT2 = n*n*(1.0-cosX*cosX);
+            // Total internal reflection
+            if (sinT2 > 1.0)
+                return 1.0;
+            cosX = sqrtf(1.0-sinT2);
+        }
+        float x = 1.0-cosX;
+        float ret = r0+(1.0-r0)*x*x*x*x*x;
+ 
+        // adjust reflect multiplier for object reflectivity
+        ret = (OBJECT_REFLECTIVITY + (1.0-OBJECT_REFLECTIVITY) * ret);
+        return ret;
+}
 
 class Ball {
   public:
     Ball(const Vector& position, const Vector& color) : position_(position), color_(color) {}
 
-    optional<Tracer> pretrace(const Vector& norm_ray, const Vector& origin) const {
+    optional<Hit> pretrace(const Vector& norm_ray, const Vector& origin) const {
       P(norm_ray);
       Vector ball_vector = position_ - origin;
 
@@ -138,34 +178,14 @@ class Ball {
       if (distance_from_object_center2 > ball_size2) {
         return nullopt;
       }
-      return Tracer{this, closest_point_distance_from_viewer, distance_from_object_center2};
+      return Hit{this, closest_point_distance_from_viewer, distance_from_object_center2};
     }
 
     Vector position_, color_;
 };
 
-Point ball_trace(const Tracer& p, const Vector& norm_ray, const Vector& origin, int depth, float distance_from_eye) {
-  float distance_from_origin = p.closest_point_distance_from_viewer_ - sqrt(ball_size2 - p.distance_from_object_center2_);
-  Point intersection = origin + norm_ray * distance_from_origin;
-
-  P(intersection);
-  Vector distance_from_ball_vector = intersection - p.ball_->position_;
-
-  Vector normal = distance_from_ball_vector * ball_inv_size;
-  P(normal);
-  Vector ray_reflection = norm_ray - normal * (2 * dot(norm_ray, normal));
-  P(ray_reflection);
-  return compute_light(p.ball_->color_,
-      normal,
-      ray_reflection,
-      intersection,
-      false,
-      depth,
-      distance_from_eye + distance_from_origin);
-}
-
-Point light_trace(const Tracer& p, Vector norm_ray, Point origin, int depth, float distance_from_eye) {
-  float distance_from_origin = p.closest_point_distance_from_viewer_ - sqrt(ball_size2 - p.distance_from_object_center2_);
+Point light_trace(const Hit& p, Vector norm_ray, Point origin, int depth, float distance_from_eye) {
+  float distance_from_origin = p.closest_point_distance_from_viewer_ - sqrtf(ball_size2 - p.distance_from_object_center2_);
   Point intersection = origin + norm_ray * distance_from_origin;
   Vector distance_from_light_vector = intersection - light_pos;
 
@@ -175,7 +195,7 @@ Point light_trace(const Tracer& p, Vector norm_ray, Point origin, int depth, flo
   return light_color * (angle / (distance_from_eye * distance_from_eye));
 }
 
-class optional<Tracer> pretrace_light(const Vector& norm_ray, const Vector& origin) {
+class optional<Hit> pretrace_light(const Vector& norm_ray, const Vector& origin) {
   Vector light_vector = light_pos - origin;
   float light_distance2 = light_vector.size2();
 
@@ -190,32 +210,210 @@ class optional<Tracer> pretrace_light(const Vector& norm_ray, const Vector& orig
   if (distance_from_light_center2 > light_size2) {
     return nullopt;
   }
-  return Tracer{nullptr, closest_point_distance_from_origin, distance_from_light_center2};
+  return Hit{nullptr, closest_point_distance_from_origin, distance_from_light_center2};
 }
 
 std::vector<Ball> balls = {
-  {{0, 0.7f * ball_size, ball_size}, {1, 0.01, 0.01}},
+  {{-1, -2, ball_size * 1.0f}, {1, 1, 1}},
   {{-2 * ball_size, 0, ball_size}, {0.01, 1.0, 0.01}},
   {{2 * ball_size, 0, ball_size}, {1.00, 0.00, 1.}},
-  {{2 * ball_size, 0, ball_size}, {1.00, 1.00, 1.}},
 };
 
-optional<Point> trace_objects(const Vector& norm_ray, const Vector& origin, int depth, float distance_from_eye) {
-  optional<Tracer> tracer;
+int max_internal_reflections = 30;
+
+Point trace_ball0_internal(const Vector& norm_ray, const Vector& origin, int depth, float distance_from_eye, int reflection) {
+//  assert(distance_from_eye < 10000 && distance_from_eye >= 0);
+  Vector ball_vector = balls[0].position_ - origin;
+  float closest_point_distance_from_viewer = dot(norm_ray, ball_vector);
+  float ball_distance2 = ball_vector.size2();
+
+  float distance_from_origin = 2 * closest_point_distance_from_viewer;
+  Point intersection = origin + norm_ray * distance_from_origin;
+  Vector distance_from_ball_vector = intersection - balls[0].position_;
+  Vector normal = distance_from_ball_vector * ball_inv_size;
+
+  if (FresnelReflectAmount(glass_refraction_index, 1, normal, norm_ray) > reflect_gen(gen)) {
+    return Point(0,0,0);
+    Vector ray_reflection = norm_ray + normal * (2 * dot(norm_ray, normal));
+    if (reflection <= 0) return Point();
+    return trace_ball0_internal(ray_reflection, origin, depth, distance_from_eye + distance_from_origin, --reflection);
+  } else {
+    // refract
+    float cosi = dot(normal, norm_ray);
+    normal = -normal;
+    float eta = glass_refraction_index;
+    float k = 1 - eta * eta * (1 - cosi * cosi);
+    Vector refracted_ray_norm = norm_ray * eta  + normal * (eta * cosi - sqrtf(k));
+    auto res = trace(refracted_ray_norm, intersection, depth, distance_from_eye + distance_from_origin);
+    if (!res) return Vector(0,0,0);
+    return *res;
+  }
+}
+
+Point ball_trace(const Hit& p, const Vector& norm_ray, const Vector& origin, int depth, float distance_from_eye) {
+  float distance_from_origin = p.closest_point_distance_from_viewer_ - sqrtf(ball_size2 - p.distance_from_object_center2_);
+  Point intersection = origin + norm_ray * distance_from_origin;
+
+  P(intersection);
+  Vector distance_from_ball_vector = intersection - p.ball_->position_;
+
+  Vector normal = distance_from_ball_vector * ball_inv_size;
+  if (p.ball_->position_ != balls[0].position_
+      || FresnelReflectAmount(1, glass_refraction_index, normal, norm_ray) > reflect_gen(gen)) {
+    Vector ray_reflection = norm_ray - normal * (2 * dot(norm_ray, normal));
+
+    P(ray_reflection);
+    return compute_light(p.ball_->color_,
+        normal,
+        ray_reflection,
+        intersection,
+        false,
+        depth,
+        distance_from_eye + distance_from_origin);
+  } else {
+    // refract
+    float cosi = -dot(normal, norm_ray);
+    // FIXME: hack
+    if (cosi < 0) return Point(0,0,0);
+    float eta = 1.f/glass_refraction_index;
+    float k = 1 - eta * eta * (1 - cosi * cosi);
+    Vector refracted_ray_norm = norm_ray * eta  + normal * (eta * cosi - sqrtf(k));
+    return trace_ball0_internal(refracted_ray_norm, intersection, depth,
+        distance_from_eye + distance_from_origin, max_internal_reflections);
+  }
+}
+
+struct RoomHit {
+  float min_dist;
+  Vector normal;
+  Vector reflection;
+  Vector color;
+};
+
+RoomHit pretrace_room(const Vector& norm_ray, const Vector& point) {
+//  Point room_a(wall_x0, wall_y0, 0);
+//  Point room_b(wall_x1, wall_y1, ceiling_z);
+//  Point tMin = (room_a - point) / norm_ray;
+//  Point tMax = (room_b - point) / norm_ray;
+//  Point t1 = min(dist_a, dist_b);
+//  Point t2 = max(dist_a, dist_b);
+//  float tNear = max(max(t1.x, t1.y), t1.z);
+//  float tFar = min(min(t2.x, t2.y), t2.z);
+
+  float dist_x, dist_y, dist_z;
+  if (norm_ray.z >= 0) {
+    // tracng ceiling
+    dist_z = (ceiling_z-point.z) / norm_ray.z;
+  } else {
+    // tracing floor
+    dist_z = (/*0*/-point.z) / norm_ray.z;
+  }
+  if (norm_ray.x >= 0) {
+    // tracing ceiling
+    dist_x = (wall_x1-point.x) / norm_ray.x;
+  } else {
+    // tracing floor
+    dist_x = (wall_x0-point.x) / norm_ray.x;
+  }
+
+  if (norm_ray.y >= 0) {
+    // tracing ceiling
+    dist_y = (wall_y1-point.y) / norm_ray.y;
+  } else {
+    // tracing floor
+    dist_y = (wall_y0-point.y) / norm_ray.y;
+  }
+  Vector normal;
+  Vector reflection;
+  float min_dist;
+  Vector color;
+  if (dist_y < dist_z) {
+    color = wall_color;
+    if (dist_x < dist_y) {
+      min_dist = dist_x;
+      reflection = Vector(-norm_ray.x, norm_ray.y, norm_ray.z);
+      normal = Vector(std::copysign(1, reflection.x), 0, 0);
+    } else {
+      min_dist = dist_y;
+      reflection = Vector(norm_ray.x, -norm_ray.y, norm_ray.z);
+      normal = Vector(0, std::copysign(1, reflection.y), 0);
+    }
+  } else {
+    if (dist_x < dist_z) {
+      min_dist = dist_x;
+      reflection = Vector(-norm_ray.x, norm_ray.y, norm_ray.z);
+      normal = Vector(std::copysign(1, reflection.x), 0, 0);
+      color = wall_color;
+    } else {
+      min_dist = dist_z;
+      reflection = Vector(norm_ray.x, norm_ray.y, -norm_ray.z);
+      normal = Vector(0, 0, std::copysign(1, reflection.z));
+      color = std::signbit(reflection.z) ? ceiling_color : floor_color;
+    }
+  }
+  return {min_dist, normal, reflection, color};
+}
+
+optional<Point> trace_room(const Vector& norm_ray, const Vector& point, int depth, float distance_from_eye) {
+  RoomHit p = pretrace_room(norm_ray, point);
+  Point ray = norm_ray * p.min_dist;
+  Point intersection = point + ray;
+  // tiles
+  Vector color = p.color;
+  if (intersection.z < 0.01) {
+    color = ((int)(intersection.x + 10) % 2 == (int)(intersection.y + 10) % 2) ? Vector(0.1, 0.1, 0.1) : Vector(1,1,1);
+  }
+  return compute_light(color, p.normal, p.reflection, intersection, true, depth, distance_from_eye + p.min_dist);
+}
+
+optional<Point> trace(const Vector& norm_ray, const Vector& origin, int depth, float distance_from_eye) {
+  optional<Hit> tracer;
   for (const Ball& b : balls) {
-    optional<Tracer> t = b.pretrace(norm_ray, origin);
+    optional<Hit> t = b.pretrace(norm_ray, origin);
     if (tracer == nullopt || (t && t->closest_point_distance_from_viewer_ < tracer->closest_point_distance_from_viewer_)) {
       tracer = t;
     }
   }
-  optional<Tracer> t = pretrace_light(norm_ray, origin);
+  optional<Hit> t = pretrace_light(norm_ray, origin);
   if (t && (tracer == nullopt || t->closest_point_distance_from_viewer_ < tracer->closest_point_distance_from_viewer_)) {
     return light_trace(*t, norm_ray, origin, depth, distance_from_eye);
   }
   if (tracer != nullopt) {
     return ball_trace(*tracer, norm_ray, origin, depth, distance_from_eye);
   }
-  return nullopt;
+  return trace_room(norm_ray, origin, depth, distance_from_eye);
+}
+
+optional<float> distance(const Vector& norm_ray, const Vector& origin) {
+  optional<Hit> ball_hit;
+  for (const Ball& b : balls) {
+    optional<Hit> another_ball_hit = b.pretrace(norm_ray, origin);
+    if (ball_hit == nullopt ||
+        (another_ball_hit && another_ball_hit->closest_point_distance_from_viewer_
+           < ball_hit->closest_point_distance_from_viewer_)) {
+      P("ball hit");
+      ball_hit = another_ball_hit;
+    }
+  }
+  optional<Hit> light_hit = pretrace_light(norm_ray, origin);
+  if (light_hit && (ball_hit == nullopt
+        || light_hit->closest_point_distance_from_viewer_ <
+              ball_hit->closest_point_distance_from_viewer_)) {
+    P("light hit");
+    return light_hit->closest_point_distance_from_viewer_
+      - sqrtf(light_size2 - light_hit->distance_from_object_center2_);
+  }
+
+  if (ball_hit != nullopt) {
+    float distance_from_origin = ball_hit->closest_point_distance_from_viewer_
+      - sqrtf(ball_size2 - ball_hit->distance_from_object_center2_);
+    P("ball hit selected");
+    return distance_from_origin;
+  }
+
+  RoomHit rt = pretrace_room(norm_ray, origin);
+  P(rt.min_dist);
+  return rt.min_dist;
 }
 
 Point compute_light(
@@ -248,7 +446,7 @@ Point compute_light(
     return total_color;
   }
   float light_distance2 = light_from_point.size2();
-  float light_distance_inv = 1/sqrt(light_distance2);
+  float light_distance_inv = 1/sqrtf(light_distance2);
   float light_distance = 1/light_distance_inv;
   Vector light_from_point_norm = light_from_point * light_distance_inv;
 
@@ -270,99 +468,13 @@ Point compute_light(
 }
 
 
-float room_size = 6;
-float ceiling_z = room_size;
-float wall_x0 = -room_size;
-float wall_x1 = room_size;
-float wall_y0 = -room_size;
-float wall_y1 = room_size;
-
-optional<Point> trace_room(const Vector& norm_ray, const Vector& point, int depth, float distance_from_eye) {
-//  Point room_a(wall_x0, wall_y0, 0);
-//  Point room_b(wall_x1, wall_y1, ceiling_z);
-//  Point tMin = (room_a - point) / norm_ray;
-//  Point tMax = (room_b - point) / norm_ray;
-//  Point t1 = min(dist_a, dist_b);
-//  Point t2 = max(dist_a, dist_b);
-//  float tNear = max(max(t1.x, t1.y), t1.z);
-//  float tFar = min(min(t2.x, t2.y), t2.z);
-
-  float dist_x, dist_y, dist_z;
-  if (norm_ray.z >= 0) {
-    // trace ceiling
-    dist_z = (ceiling_z-point.z) / norm_ray.z;
-  } else {
-    // trace floor
-    dist_z = (/*0*/-point.z) / norm_ray.z;
-  }
-  if (norm_ray.x >= 0) {
-    // trace ceiling
-    dist_x = (wall_x1-point.x) / norm_ray.x;
-  } else {
-    // trace floor
-    dist_x = (wall_x0-point.x) / norm_ray.x;
-  }
-
-  if (norm_ray.y >= 0) {
-    // trace ceiling
-    dist_y = (wall_y1-point.y) / norm_ray.y;
-  } else {
-    // trace floor
-    dist_y = (wall_y0-point.y) / norm_ray.y;
-  }
-  Vector normal;
-  Vector reflection;
-  float min_dist;
-  Vector color;
-  if (dist_y < dist_z) {
-    color = wall_color;
-    if (dist_x < dist_y) {
-      min_dist = dist_x;
-      reflection = Vector(-norm_ray.x, norm_ray.y, norm_ray.z);
-      normal = Vector(std::copysign(1, reflection.x), 0, 0);
-    } else {
-      min_dist = dist_y;
-      reflection = Vector(norm_ray.x, -norm_ray.y, norm_ray.z);
-      normal = Vector(0, std::copysign(1, reflection.y), 0);
-    }
-  } else {
-    if (dist_x < dist_z) {
-      min_dist = dist_x;
-      reflection = Vector(-norm_ray.x, norm_ray.y, norm_ray.z);
-      normal = Vector(std::copysign(1, reflection.x), 0, 0);
-      color = wall_color;
-    } else {
-      min_dist = dist_z;
-      reflection = Vector(norm_ray.x, norm_ray.y, -norm_ray.z);
-      normal = Vector(0, 0, std::copysign(1, reflection.z));
-      color = std::signbit(reflection.z) ? ceiling_color : floor_color;
-    }
-  }
-
-  Point ray = norm_ray * min_dist;
-  Point intersection = point + ray;
-  return compute_light(color, normal, reflection, intersection, true, depth, distance_from_eye + min_dist);
-}
-
-optional<Point> trace(const Vector& norm_ray, const Vector& origin, int depth, float distance_from_eye) {
-  auto b = trace_objects(norm_ray, origin, depth, distance_from_eye);
-  if (b) {
-    return b;
-  }
-  return trace_room(norm_ray, origin, depth, distance_from_eye);
-}
-
 Vector sight = Vector(0., 1, -0.1).normalize();
-
-float dx = 1.9 / WINDOW_WIDTH;
-
-Vector sight_x = Vector(dx, 0, 0);
-Vector sight_y = cross(sight, sight_x).normalize() * dx;
+Vector sight_x, sight_y;
 
 // Sort objects by distance / obstraction possibility
 Uint8 colorToInt(float c) {
   if (c > 1) return 255;
-  return sqrt(c) * 255;
+  return sqrtf(c) * 255;
 }
 Vector saturateColor(Point c) {
   float m = std::max(c.x, c.y);
@@ -387,7 +499,7 @@ void check_saturation() {
   assert(s.sum() == Vector(1, 0.6, 0.5).sum());
 }
 
-Point viewer = Point(0, -6, 2.0);
+Point viewer = Point(0, -5.5, 1.5);
 
 std::vector<std::thread> threads;
 std::mutex m;
@@ -399,12 +511,24 @@ bool accumulate = true;
 int num_running = 0;
 BasePoint<double>* fppixels;
 Uint8* pixels;
-float focused_distance = 4;
 
+void set_focus_distance(float x, float y) {
+  Vector yoffset = sight_y * (float)(window_height / 2);
+  Vector xoffset = sight_x * (float)(window_width / 2);
+
+  Vector ray = sight - yoffset - xoffset + sight_y * y + sight_x * x;
+  P(ray);
+  Vector norm_ray = ray.normalize();
+  P(norm_ray);
+  auto res = distance(norm_ray, viewer);
+  if (res) {
+    focused_distance = *res;
+  }
+}
 
 void drawThread(int id) {
-  Vector yoffset = sight_y * (float)(WINDOW_HEIGHT / 2);
-  Vector xoffset = sight_x * (float)(WINDOW_WIDTH / 2);
+  Vector yoffset = sight_y * (float)(window_height / 2);
+  Vector xoffset = sight_x * (float)(window_width / 2);
   Uint8* my_pixels = pixels;
   BasePoint<double>* my_fppixels = fppixels;
   float num_frames = frame - base_frame;
@@ -412,13 +536,13 @@ void drawThread(int id) {
   double one_mul = 1 / num_frames;
 
   Vector yray = sight - yoffset - xoffset;
-  for (int y = 0; y < WINDOW_HEIGHT; y++) {
+  for (int y = 0; y < window_height; y++) {
     if (y % numCPU == id) {
       Vector ray = yray;
-      for (int x = 0; x < WINDOW_WIDTH; x++) {
+      for (int x = 0; x < window_width; x++) {
         Vector norm_ray = ray;
         Vector focused_point = viewer + norm_ray * focused_distance;
-        Vector me = viewer + sight_x * (float)lense_gen(gen) + sight_y * (float)lense_gen(gen);
+        Vector me = viewer + sight_x.normalize() * (float)lense_gen(gen) + sight_y.normalize() * (float)lense_gen(gen);
         Vector new_ray = (focused_point - me).normalize();
 
         trace_values = x == 500 && y == 500;
@@ -437,8 +561,8 @@ void drawThread(int id) {
         ray += sight_x;
       }
     } else {
-      my_pixels += WINDOW_WIDTH * 4;
-      my_fppixels += WINDOW_WIDTH;
+      my_pixels += window_width * 4;
+      my_fppixels += window_width;
     }
     yray += sight_y;
   }
@@ -485,9 +609,18 @@ void draw() {
 }
 void start_accumulate() {
   accumulate = true;
-  memset(fppixels, 0, WINDOW_WIDTH * WINDOW_HEIGHT * sizeof(BasePoint<double>));
+  memset(fppixels, 0, window_width * window_height * sizeof(BasePoint<double>));
   base_frame = frame;
 //  printf("start accumulate\n");
+}
+
+void update_viewpoint() {
+  float dx = 1.9 / window_width;
+  Vector x = cross(sight, Vector(0,0,1));
+  sight_y = cross(sight, x);
+  sight_x = cross(sight, sight_y);
+  sight_x *= dx;
+  sight_y *= dx;
 }
 
 int main(void) {
@@ -505,21 +638,25 @@ int main(void) {
     SDL_Window *window;
 
     SDL_Init(SDL_INIT_VIDEO);
-    SDL_CreateWindowAndRenderer(WINDOW_WIDTH, WINDOW_HEIGHT, 0, &window, &renderer);
+    SDL_CreateWindowAndRenderer(window_width, window_height, 0, &window, &renderer);
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0);
     SDL_RenderClear(renderer);
     SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255);
     SDL_Texture * texture = SDL_CreateTexture(renderer,
-                SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STATIC, WINDOW_WIDTH, WINDOW_HEIGHT);
-    fppixels = new BasePoint<double>[WINDOW_WIDTH * WINDOW_HEIGHT];
-    pixels = new Uint8[WINDOW_WIDTH * WINDOW_HEIGHT * 4];
+                SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STATIC, window_width, window_height);
+    fppixels = new BasePoint<double>[window_width * window_height];
+    pixels = new Uint8[window_width * window_height * 4];
 
     SDL_RenderPresent(renderer);
     bool move_forward = false;
     bool move_backward = false;
-    bool turn_left = false;
-    bool turn_right = false;
+    bool strafe_left = false;
+    bool strafe_right = false;
+    bool relative_motion = false;
     unsigned int currentTime = SDL_GetTicks();
+    update_viewpoint();
+    int mouse_x_before_rel = 0;
+    int mouse_y_before_rel = 0;
 
     while (1) {
       unsigned int newTime = SDL_GetTicks();
@@ -536,17 +673,12 @@ int main(void) {
         moved = true;
       }
 
-      if (turn_left || turn_right) {
+      if (strafe_left || strafe_right) {
         trace_values = true;
-        P(sight);
-        sight = (((cross(sight, Vector(0.f,0.f,turn_left ? -1.f : 1.f))) * (0.001f * dt) + sight)).normalize();
-        P(sight);
-        P(sight_x);
-        sight_x = cross(sight, Vector(0.f,0.f,dx));
-        P(sight_x);
-        P(sight_y);
-        sight_y = cross(sight, sight_x).normalize() * dx;
-        P(sight_y);
+        Vector move = sight_x.normalize();
+        move.z = 0;
+        viewer += move * (0.001f * dt * (strafe_right ? 1 : -1));
+        update_viewpoint();
         moved = true;
       }
       if (moved) start_accumulate();
@@ -557,12 +689,42 @@ int main(void) {
             goto exit;
             break;
           case SDL_MOUSEBUTTONUP:
-                         if (event.button.button == SDL_BUTTON_LEFT)
-                           move_forward = false;
+                         if (event.button.button == SDL_BUTTON_RIGHT) {
+                           SDL_SetRelativeMouseMode(SDL_FALSE);
+//                           SDL_WarpMouseInWindow(window,
+//                               mouse_x_before_rel,
+//                               mouse_y_before_rel);
+                           relative_motion = false;
+                         }
                          break;
           case SDL_MOUSEBUTTONDOWN:
-                         if (event.button.button == SDL_BUTTON_LEFT)
-                           move_forward = true;
+                         if (event.button.button == SDL_BUTTON_RIGHT) {
+                           SDL_SetRelativeMouseMode(SDL_TRUE);
+                           SDL_SetWindowGrab(window, SDL_TRUE);
+                           relative_motion = true;
+                           mouse_x_before_rel = event.button.x;
+                           mouse_y_before_rel = event.button.y;
+                         }
+                         if (event.button.button == SDL_BUTTON_LEFT) {
+                           if (relative_motion) {
+                             printf("Focus center\n");
+                             set_focus_distance(window_width / 2, window_height / 2);
+                           } else {
+                             set_focus_distance(event.button.x, event.button.y);
+                           }
+                           printf("Focused distance: %f\n", focused_distance);
+                           start_accumulate();
+                         }
+                         break;
+          case SDL_MOUSEMOTION:
+                         if (event.motion.state == SDL_BUTTON_RMASK) {
+                           Vector x = cross(sight, Vector(0.f,0.f,1.f)).normalize();
+                           Vector y = cross(sight, x).normalize();
+                           sight = (cross(sight, y) * (0.001f * event.motion.xrel) + sight).normalize();
+                           sight = (cross(sight, x) * (0.001f * event.motion.yrel) + sight).normalize();
+                           update_viewpoint();
+                           start_accumulate();
+                         }
                          break;
           case SDL_KEYUP:
           case SDL_KEYDOWN:
@@ -579,11 +741,11 @@ int main(void) {
                              move_backward = event.key.state == SDL_PRESSED;
                              break;
                            case SDL_SCANCODE_A:
-                             turn_left = event.key.state == SDL_PRESSED;
+                             strafe_left = event.key.state == SDL_PRESSED;
                              break;
                            case SDL_SCANCODE_E:
                            case SDL_SCANCODE_D:
-                             turn_right = event.key.state == SDL_PRESSED;
+                             strafe_right = event.key.state == SDL_PRESSED;
                              break;
                            case SDL_SCANCODE_1:
                              max_depth = 0;
@@ -602,15 +764,15 @@ int main(void) {
                              if (event.key.state != SDL_PRESSED) start_accumulate();
                              break;
                            case SDL_SCANCODE_7:
-                             wall_gen = std::normal_distribution<double>{-0.00,0.00};
+                             wall_gen = std::normal_distribution<float>{-0.00,0.00};
                              if (event.key.state != SDL_PRESSED) start_accumulate();
                              break;
                            case SDL_SCANCODE_8:
-                             wall_gen = std::normal_distribution<double>{-0.03,0.03};
+                             wall_gen = std::normal_distribution<float>{-0.03,0.03};
                              if (event.key.state != SDL_PRESSED) start_accumulate();
                              break;
                            case SDL_SCANCODE_9:
-                             wall_gen = std::normal_distribution<double>{-0.8,0.8};
+                             wall_gen = std::normal_distribution<float>{-0.8,0.8};
                              if (event.key.state != SDL_PRESSED) start_accumulate();
                              break;
                            case SDL_SCANCODE_MINUS:
@@ -618,7 +780,7 @@ int main(void) {
                              light_size = 0.1;
                              light_size2 = light_size * light_size;
                              light_inv_size = 1 / light_size;
-                             light_gen = std::normal_distribution<double>{light_size, light_size};
+                             light_gen = std::normal_distribution<float>{light_size, light_size};
                              if (event.key.state != SDL_PRESSED) start_accumulate();
                              break;
                            case SDL_SCANCODE_EQUALS:
@@ -626,15 +788,57 @@ int main(void) {
                              light_size = 0.9;
                              light_size2 = light_size * light_size;
                              light_inv_size = 1 / light_size;
-                             light_gen = std::normal_distribution<double>{light_size, light_size};
+                             light_gen = std::normal_distribution<float>{light_size, light_size};
                              if (event.key.state != SDL_PRESSED) start_accumulate();
                              break;
+                           case SDL_SCANCODE_LEFTBRACKET:
+                             lense_blur = std::max(0.f, lense_blur * 0.8f - .0001f);
+                             if (lense_blur == 0) {
+                               printf("No blur\n");
+                             }
+                             lense_gen = std::normal_distribution<float>{-lense_blur,lense_blur};
+                             if (event.key.state != SDL_PRESSED) start_accumulate();
+                             break;
+
+                           case SDL_SCANCODE_RIGHTBRACKET:
+                             lense_blur = lense_blur * 1.2f + .0001f;
+                             lense_gen = std::normal_distribution<float>{-lense_blur,lense_blur};
+                             if (event.key.state != SDL_PRESSED) start_accumulate();
+                             break;
+                           case SDL_SCANCODE_F:
+                             if (event.key.state != SDL_PRESSED) {
+                               SDL_DestroyRenderer(renderer);
+                               SDL_DestroyWindow(window);
+                               SDL_DestroyTexture(texture);
+                               delete fppixels;
+                               delete pixels;
+
+                               if (window_width == 480) {
+                                 window_width = 1920;
+                                 window_height = 1080;
+                               } else {
+                                 window_width = 480;
+                                 window_height = 270;
+                               }
+
+                               SDL_CreateWindowAndRenderer(window_width, window_height, 0, &window, &renderer);
+                               texture = SDL_CreateTexture(renderer,
+                                   SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STATIC, window_width, window_height);
+                               fppixels = new BasePoint<double>[window_width * window_height];
+                               pixels = new Uint8[window_width * window_height * 4];
+                               update_viewpoint();
+                               start_accumulate();
+                             }
+                             break;
+                           case SDL_SCANCODE_Z:
+                             if (event.key.state != SDL_PRESSED)
+                               SDL_SetWindowGrab(window, SDL_FALSE);
                          }
         }
       }
 
       draw();
-      SDL_UpdateTexture(texture, NULL, (void*)pixels, WINDOW_WIDTH * sizeof(Uint32));
+      SDL_UpdateTexture(texture, NULL, (void*)pixels, window_width * sizeof(Uint32));
       SDL_RenderCopy(renderer, texture, NULL, NULL);
       SDL_RenderPresent(renderer);
       event.type = -1;
