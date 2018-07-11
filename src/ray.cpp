@@ -192,8 +192,9 @@ Point light_trace(const Hit& p, Vector norm_ray, Point origin, int depth, float 
 
   Vector normal = distance_from_light_vector * light_inv_size;
   float angle = -dot(norm_ray, normal);
+  float total_distance = distance_from_eye + distance_from_origin;
 
-  return light_color * (angle / (distance_from_eye * distance_from_eye));
+  return light_color * (angle / (total_distance * total_distance));
 }
 
 class optional<Hit> pretrace_light(const Vector& norm_ray, const Vector& origin) {
@@ -543,8 +544,8 @@ void drawThread(int id) {
     if (y % numCPU == id) {
       Vector ray = yray;
       for (int x = 0; x < window_width; x++) {
-        Vector norm_ray = ray + sight_x * antialiasing(gen) + sight_y * antialiasing(gen);
-        Vector focused_point = viewer + norm_ray * focused_distance;
+        Vector focused_ray = (ray + sight_x * antialiasing(gen) + sight_y * antialiasing(gen)).normalize();
+        Vector focused_point = viewer + focused_ray * focused_distance;
         Vector me = viewer + sight_x.normalize() * (float)lense_gen(gen) + sight_y.normalize() * (float)lense_gen(gen);
         Vector new_ray = (focused_point - me).normalize();
 
