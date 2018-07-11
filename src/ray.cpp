@@ -12,6 +12,9 @@
 #include <boost/optional.hpp>
 #include <algorithm>
 #include <random>
+#include <functional>
+
+using namespace std::placeholders;
 
 //#define P(x) print(#x, x);
 #define P(x) {}
@@ -260,11 +263,9 @@ Point ball_trace(const Hit& p, const Vector& norm_ray, const Vector& origin, int
   Vector distance_from_ball_vector = intersection - p.ball_->position_;
 
   Vector normal = distance_from_ball_vector * ball_inv_size;
-  if (p.ball_->position_ != balls[0].position_
-      || FresnelReflectAmount(1, glass_refraction_index, normal, norm_ray) > reflect_gen(gen)) {
-    Vector ray_reflection = norm_ray - normal * (2 * dot(norm_ray, normal));
 
-    P(ray_reflection);
+  auto make_reflection = [&]() {
+    Vector ray_reflection = norm_ray - normal * (2 * dot(norm_ray, normal));
     return compute_light(p.ball_->color_,
         normal,
         ray_reflection,
@@ -272,16 +273,36 @@ Point ball_trace(const Hit& p, const Vector& norm_ray, const Vector& origin, int
         false,
         depth,
         distance_from_eye + distance_from_origin);
-  } else {
-    // refract
+  };
+
+  auto make_refraction = [&]() {
     float cosi = -dot(normal, norm_ray);
     // FIXME: hack
-    if (cosi < 0) return Point(0,0,0);
+    if (cosi < 0) return Point();
     float eta = 1.f/glass_refraction_index;
     float k = 1 - eta * eta * (1 - cosi * cosi);
     Vector refracted_ray_norm = norm_ray * eta  + normal * (eta * cosi - sqrtf(k));
     return trace_ball0_internal(refracted_ray_norm, intersection, depth,
         distance_from_eye + distance_from_origin, max_internal_reflections);
+  };
+
+  if (p.ball_->position_ != balls[0].position_) {
+    return make_reflection();
+  }
+
+  float reflect_ammount = FresnelReflectAmount(1, glass_refraction_index, normal, norm_ray);
+  if (reflect_ammount >= 1.f) {
+    return make_reflection();
+  }
+
+  if (depth == max_depth) {
+    // Trace both if first ray
+    return make_reflection() * reflect_ammount + make_refraction() * (1 - reflect_ammount);
+  }
+  if (reflect_ammount > reflect_gen(gen)) {
+    return make_reflection();
+  } else {
+    return make_refraction();
   }
 }
 
@@ -509,7 +530,6 @@ std::condition_variable cv;
 int frame = 0;
 int base_frame = 0;
 bool die = false;
-bool accumulate = true;
 int num_running = 0;
 BasePoint<double>* fppixels;
 Uint8* pixels;
@@ -551,10 +571,10 @@ void drawThread(int id) {
 
         trace_values = x == 500 && y == 500;
         auto res = trace(new_ray, me, max_depth, 0);
-        if (accumulate) {
-          *my_fppixels = BasePoint<double>::convert(*my_fppixels) + BasePoint<double>::convert(*res);
-          res = BasePoint<float>::convert(*my_fppixels++ * one_mul);
-        }
+        // accumulate
+        *my_fppixels = BasePoint<double>::convert(*my_fppixels) + BasePoint<double>::convert(*res);
+        res = BasePoint<float>::convert(*my_fppixels++ * one_mul);
+
         if (res) {
           Vector saturated = saturateColor(*res);
           *my_pixels++ = colorToInt(saturated.x);
@@ -600,9 +620,14 @@ void draw() {
       threads.push_back(std::thread(worker, i));
     }
   }
+
   {
     std::unique_lock<std::mutex> lk(m);
     num_running = threads.size();
+    // Clear accumulated image
+    if (frame == base_frame) {
+      memset(fppixels, 0, window_width * window_height * sizeof(BasePoint<double>));
+    }
     frame++;
     cv.notify_all();
   }
@@ -611,11 +636,9 @@ void draw() {
     cv.wait(lk, []{return num_running == 0;});
   }
 }
-void start_accumulate() {
-  accumulate = true;
-  memset(fppixels, 0, window_width * window_height * sizeof(BasePoint<double>));
+
+void reset_accumulate() {
   base_frame = frame;
-//  printf("start accumulate\n");
 }
 
 void update_viewpoint() {
@@ -652,40 +675,35 @@ int main(void) {
     pixels = new Uint8[window_width * window_height * 4];
 
     SDL_RenderPresent(renderer);
-    bool move_forward = false;
-    bool move_backward = false;
-    bool strafe_left = false;
-    bool strafe_right = false;
+    optional<Uint32> ts_move_forward;
+    optional<Uint32> ts_move_backward;
+    optional<Uint32> ts_strafe_left;
+    optional<Uint32> ts_strafe_right;
+
     bool relative_motion = false;
-    unsigned int currentTime = SDL_GetTicks();
     update_viewpoint();
     int mouse_x_before_rel = 0;
     int mouse_y_before_rel = 0;
 
+    auto apply_motion = [](Vector dir, optional<Uint32>* prev_ts, Uint32 ts) {
+      if (*prev_ts == nullopt) {
+        return;
+      }
+      if (ts < **prev_ts) {
+        return;
+      }
+      dir.z = 0;
+      int dt = ts - **prev_ts;
+      viewer += dir * (0.001f * dt);
+      *prev_ts = ts;
+      reset_accumulate();
+    };
+
     while (1) {
-      unsigned int newTime = SDL_GetTicks();
-      unsigned int dt = newTime - currentTime;
-
-      bool moved = false;
-
-      if (move_forward || move_backward) {
-        Vector move = sight;
-        move.z = 0;
-        viewer += move * (0.001f * dt * (move_forward ? 1 : -1));
-        //balls.back().position_ = viewer;
-        //balls.back().position_.z = ball_size;
-        moved = true;
-      }
-
-      if (strafe_left || strafe_right) {
-        trace_values = true;
-        Vector move = sight_x.normalize();
-        move.z = 0;
-        viewer += move * (0.001f * dt * (strafe_right ? 1 : -1));
-        update_viewpoint();
-        moved = true;
-      }
-      if (moved) start_accumulate();
+      auto move_forward = std::bind(apply_motion, sight, &ts_move_forward, _1);
+      auto move_backward = std::bind(apply_motion, -sight, &ts_move_backward, _1);
+      auto move_left = std::bind(apply_motion, -sight_x.normalize(), &ts_strafe_left, _1);
+      auto move_right = std::bind(apply_motion, sight_x.normalize(), &ts_strafe_right, _1);
 
       while(SDL_PollEvent(&event)) {
         switch (event.type) {
@@ -717,7 +735,7 @@ int main(void) {
                              set_focus_distance(event.button.x, event.button.y);
                            }
                            printf("Focused distance: %f\n", focused_distance);
-                           start_accumulate();
+                           reset_accumulate();
                          }
                          break;
           case SDL_MOUSEMOTION:
@@ -727,11 +745,15 @@ int main(void) {
                            sight = (cross(sight, y) * (0.001f * event.motion.xrel) + sight).normalize();
                            sight = (cross(sight, x) * (0.001f * event.motion.yrel) + sight).normalize();
                            update_viewpoint();
-                           start_accumulate();
+                           reset_accumulate();
                          }
                          break;
           case SDL_KEYUP:
           case SDL_KEYDOWN:
+                         auto update_key_ts = [&](optional<Uint32>* state) {
+                           printf("State %d ts = %d\n", event.key.state, event.key.timestamp);
+                           *state = (event.key.state == SDL_PRESSED) ? optional<Uint32>(event.key.timestamp) : nullopt;
+                         };
                          switch (event.key.keysym.scancode) {
                            case SDL_SCANCODE_ESCAPE:
                              die = true;
@@ -739,45 +761,49 @@ int main(void) {
                              for (auto& t : threads) t.join();
                              goto exit;
                            case SDL_SCANCODE_W:
-                             move_forward = event.key.state == SDL_PRESSED;
+                             move_forward(event.key.timestamp);
+                             update_key_ts(&ts_move_forward);
                              break;
                            case SDL_SCANCODE_S:
-                             move_backward = event.key.state == SDL_PRESSED;
+                             move_backward(event.key.timestamp);
+                             update_key_ts(&ts_move_backward);
                              break;
                            case SDL_SCANCODE_A:
-                             strafe_left = event.key.state == SDL_PRESSED;
+                             move_left(event.key.timestamp);
+                             update_key_ts(&ts_strafe_left);
                              break;
                            case SDL_SCANCODE_E:
                            case SDL_SCANCODE_D:
-                             strafe_right = event.key.state == SDL_PRESSED;
+                             move_right(event.key.timestamp);
+                             update_key_ts(&ts_strafe_right);
                              break;
                            case SDL_SCANCODE_1:
                              max_depth = 0;
-                             if (event.key.state != SDL_PRESSED) start_accumulate();
+                             if (event.key.state != SDL_PRESSED) reset_accumulate();
                              break;
                            case SDL_SCANCODE_2:
                              max_depth = 1;
-                             if (event.key.state != SDL_PRESSED) start_accumulate();
+                             if (event.key.state != SDL_PRESSED) reset_accumulate();
                              break;
                            case SDL_SCANCODE_3:
                              max_depth = 2;
-                             if (event.key.state != SDL_PRESSED) start_accumulate();
+                             if (event.key.state != SDL_PRESSED) reset_accumulate();
                              break;
                            case SDL_SCANCODE_4:
                              max_depth = 3;
-                             if (event.key.state != SDL_PRESSED) start_accumulate();
+                             if (event.key.state != SDL_PRESSED) reset_accumulate();
                              break;
                            case SDL_SCANCODE_7:
                              wall_gen = std::normal_distribution<float>{-0.00,0.00};
-                             if (event.key.state != SDL_PRESSED) start_accumulate();
+                             if (event.key.state != SDL_PRESSED) reset_accumulate();
                              break;
                            case SDL_SCANCODE_8:
                              wall_gen = std::normal_distribution<float>{-0.03,0.03};
-                             if (event.key.state != SDL_PRESSED) start_accumulate();
+                             if (event.key.state != SDL_PRESSED) reset_accumulate();
                              break;
                            case SDL_SCANCODE_9:
                              wall_gen = std::normal_distribution<float>{-0.8,0.8};
-                             if (event.key.state != SDL_PRESSED) start_accumulate();
+                             if (event.key.state != SDL_PRESSED) reset_accumulate();
                              break;
                            case SDL_SCANCODE_MINUS:
                              printf("Light size 0.1\n");
@@ -785,7 +811,7 @@ int main(void) {
                              light_size2 = light_size * light_size;
                              light_inv_size = 1 / light_size;
                              light_gen = std::normal_distribution<float>{light_size, light_size};
-                             if (event.key.state != SDL_PRESSED) start_accumulate();
+                             if (event.key.state != SDL_PRESSED) reset_accumulate();
                              break;
                            case SDL_SCANCODE_EQUALS:
                              printf("Light size 2\n");
@@ -793,7 +819,7 @@ int main(void) {
                              light_size2 = light_size * light_size;
                              light_inv_size = 1 / light_size;
                              light_gen = std::normal_distribution<float>{light_size, light_size};
-                             if (event.key.state != SDL_PRESSED) start_accumulate();
+                             if (event.key.state != SDL_PRESSED) reset_accumulate();
                              break;
                            case SDL_SCANCODE_LEFTBRACKET:
                              lense_blur = std::max(0.f, lense_blur * 0.8f - .0001f);
@@ -801,13 +827,13 @@ int main(void) {
                                printf("No blur\n");
                              }
                              lense_gen = std::normal_distribution<float>{-lense_blur,lense_blur};
-                             if (event.key.state != SDL_PRESSED) start_accumulate();
+                             if (event.key.state != SDL_PRESSED) reset_accumulate();
                              break;
 
                            case SDL_SCANCODE_RIGHTBRACKET:
                              lense_blur = lense_blur * 1.2f + .0001f;
                              lense_gen = std::normal_distribution<float>{-lense_blur,lense_blur};
-                             if (event.key.state != SDL_PRESSED) start_accumulate();
+                             if (event.key.state != SDL_PRESSED) reset_accumulate();
                              break;
                            case SDL_SCANCODE_F:
                              if (event.key.state != SDL_PRESSED) {
@@ -831,7 +857,7 @@ int main(void) {
                                fppixels = new BasePoint<double>[window_width * window_height];
                                pixels = new Uint8[window_width * window_height * 4];
                                update_viewpoint();
-                               start_accumulate();
+                               reset_accumulate();
                              }
                              break;
                            case SDL_SCANCODE_Z:
@@ -841,12 +867,17 @@ int main(void) {
         }
       }
 
+      Uint32 newTime = SDL_GetTicks();
+      move_forward(newTime);
+      move_backward(newTime);
+      move_left(newTime);
+      move_right(newTime);
+
       draw();
       SDL_UpdateTexture(texture, NULL, (void*)pixels, window_width * sizeof(Uint32));
       SDL_RenderCopy(renderer, texture, NULL, NULL);
       SDL_RenderPresent(renderer);
       event.type = -1;
-      currentTime = newTime;
     }
 exit:
     SDL_DestroyRenderer(renderer);
