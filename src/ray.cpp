@@ -531,9 +531,11 @@ void drawThread(int id) {
   Vector xoffset = sight_x * (float)(window_width / 2);
   Uint8* my_pixels = pixels;
   BasePoint<double>* my_fppixels = fppixels;
-  float num_frames = frame - base_frame;
-  double base_mul = (num_frames - 1) / num_frames;
-  double one_mul = 1 / num_frames;
+  int num_frames = frame - base_frame;
+  if ((num_frames & (num_frames - 1)) == 0 && id == 0 && num_frames > 16) {
+    printf("Num frames: %d\n", num_frames);
+  }
+  double one_mul = 1. / num_frames;
 
   Vector yray = sight - yoffset - xoffset;
   for (int y = 0; y < window_height; y++) {
@@ -548,8 +550,8 @@ void drawThread(int id) {
         trace_values = x == 500 && y == 500;
         auto res = trace(new_ray, me, max_depth, 0);
         if (accumulate) {
-          *my_fppixels = BasePoint<double>::convert(*my_fppixels) * base_mul + BasePoint<double>::convert(*res) * one_mul;
-          res = BasePoint<float>::convert(*my_fppixels++);
+          *my_fppixels = BasePoint<double>::convert(*my_fppixels) + BasePoint<double>::convert(*res);
+          res = BasePoint<float>::convert(*my_fppixels++ * one_mul);
         }
         if (res) {
           Vector saturated = saturateColor(*res);
