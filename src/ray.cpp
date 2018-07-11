@@ -643,9 +643,8 @@ void reset_accumulate() {
 
 void update_viewpoint() {
   float dx = 1.9 / window_width;
-  Vector x = cross(sight, Vector(0,0,1));
-  sight_y = cross(sight, x);
-  sight_x = cross(sight, sight_y);
+  sight_x = cross(sight, Vector(0,0,1)).normalize();
+  sight_y = cross(sight, sight_x);
   sight_x *= dx;
   sight_y *= dx;
 }
@@ -742,7 +741,7 @@ int main(void) {
                          if (event.motion.state == SDL_BUTTON_RMASK) {
                            Vector x = cross(sight, Vector(0.f,0.f,1.f)).normalize();
                            Vector y = cross(sight, x).normalize();
-                           sight = (cross(sight, y) * (0.001f * event.motion.xrel) + sight).normalize();
+                           sight = (cross(sight, y) * (-0.001f * event.motion.xrel) + sight).normalize();
                            sight = (cross(sight, x) * (0.001f * event.motion.yrel) + sight).normalize();
                            update_viewpoint();
                            reset_accumulate();
