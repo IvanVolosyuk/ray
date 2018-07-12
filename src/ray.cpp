@@ -97,7 +97,7 @@ float wall_x1 = room_size;
 float wall_y0 = -room_size;
 float wall_y1 = room_size;
 
-int max_internal_reflections = 30;
+int max_internal_reflections = 20;
 
 static unsigned long x=123456789, y=362436069, z=521288629;
 
@@ -258,13 +258,12 @@ vec3 trace_ball0_internal(vec3 norm_ray, vec3 origin, int depth, float distance_
     vec3 normal = distance_from_ball_vector * ball_inv_size;
 
     if (FresnelReflectAmount(glass_refraction_index, 1, normal, norm_ray) > reflect_gen(gen)) {
-      return vec3(0,0,0);
-      vec3 ray_reflection = norm_ray + normal * (2 * dot(norm_ray, normal));
+      vec3 ray_reflection = norm_ray - normal * (2 * dot(norm_ray, normal));
+      assert(ray_reflection.normalize().size2() < 1.001);
       // Restart from new point
       norm_ray = ray_reflection;
       origin = intersection;
       distance_from_eye += distance_from_origin;
-      continue;
     } else {
       // refract
       float cosi = dot(normal, norm_ray);
@@ -272,7 +271,7 @@ vec3 trace_ball0_internal(vec3 norm_ray, vec3 origin, int depth, float distance_
       float eta = glass_refraction_index;
       float k = 1 - eta * eta * (1 - cosi * cosi);
       vec3 refracted_ray_norm = norm_ray * eta  + normal * (eta * cosi - sqrtf(k));
-      return trace(refracted_ray_norm, intersection, depth, distance_from_eye + distance_from_origin);
+      return trace(refracted_ray_norm, intersection, depth - 1, distance_from_eye + distance_from_origin);
     }
   }
   return vec3(0,0,0);
