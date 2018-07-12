@@ -9,10 +9,10 @@
 #include "vector.hpp"
 
 #include <SDL2/SDL.h>
-#include <boost/optional.hpp>
 #include <algorithm>
 #include <random>
 #include <functional>
+#include <unistd.h>
 
 using namespace std::placeholders;
 
@@ -20,11 +20,25 @@ using namespace std::placeholders;
 #define P(x) {}
 
 using vec3 = Point;
-#define optional boost::optional
-#define nullopt boost::none
+
+struct Ball {
+  Ball(const vec3 position, const vec3 color) : position_(position), color_(color) {}
+  vec3 position_, color_;
+};
+
+struct Hit {
+  Hit(int id, float c, float d) : id_(id), closest_point_distance_from_viewer_(c), distance_from_object_center2_(d) {}
+  int id_;
+  float closest_point_distance_from_viewer_;
+  float distance_from_object_center2_;
+};
+
+float max_distance = 1000;
+Hit no_hit = Hit(-1, max_distance, 0);
 
 int window_width = 480;
 int window_height = 270;
+bool trace_values = false;
 
 vec3 light_pos = vec3(-4.2, -3, 2);
 float light_size = 0.9;
@@ -36,7 +50,11 @@ float light_inv_size = 1 / light_size;
 float ball_size = 0.9;
 float ball_size2 = ball_size * ball_size;
 float ball_inv_size = 1 / ball_size;
-bool trace_values = false;
+std::vector<Ball> balls = {
+  {vec3 (-1, -2, ball_size * 1.0f), vec3(1, 1, 1)},
+  {vec3 (-2 * ball_size, 0, ball_size), vec3(0.01, 1.0, 0.01)},
+  { vec3 (2 * ball_size, 0, ball_size), vec3(1.00, 0.00, 1.)},
+};
 
 vec3 floor_color = vec3 (0.14, 1.0, 0.14);
 vec3 wall_color = vec3 (0.85, 0.8, 0.48);
@@ -62,6 +80,8 @@ float wall_x0 = -room_size;
 float wall_x1 = room_size;
 float wall_y0 = -room_size;
 float wall_y1 = room_size;
+
+int max_internal_reflections = 30;
 
 static unsigned long x=123456789, y=362436069, z=521288629;
 
@@ -122,69 +142,53 @@ void assert_norm(const vec3 v) {
 
 vec3 black = vec3(0, 0, 0);
 
-optional<vec3> trace(const vec3 norm_ray, const vec3 origin, int depth, float distance_from_eye);
+vec3 trace(const vec3 norm_ray, const vec3 origin, int depth, float distance_from_eye);
 vec3 compute_light(const vec3 color, const vec3 normal, const vec3 reflection,
     const vec3 point, bool rought_surface, int depth, float distance_from_eye);
-
-class Ball;
-
-class Hit {
-  public:
-    const Ball *ball_;
-    float closest_point_distance_from_viewer_;
-    float distance_from_object_center2_;
-};
 
 // Glass refraction index
 float glass_refraction_index = 1.492; //1.458;
 float OBJECT_REFLECTIVITY = 0;
 
 float FresnelReflectAmount (float n1, float n2, vec3 normal, vec3 incident) {
-        // Schlick aproximation
-        float r0 = (n1-n2) / (n1+n2);
-        r0 *= r0;
-        float cosX = -dot(normal, incident);
-        if (n1 > n2)
-        {
-            float n = n1/n2;
-            float sinT2 = n*n*(1.0-cosX*cosX);
-            // Total internal reflection
-            if (sinT2 > 1.0)
-                return 1.0;
-            cosX = sqrtf(1.0-sinT2);
-        }
-        float x = 1.0-cosX;
-        float ret = r0+(1.0-r0)*x*x*x*x*x;
- 
-        // adjust reflect multiplier for object reflectivity
-        ret = (OBJECT_REFLECTIVITY + (1.0-OBJECT_REFLECTIVITY) * ret);
-        return ret;
+  // Schlick aproximation
+  float r0 = (n1-n2) / (n1+n2);
+  r0 *= r0;
+  float cosX = -dot(normal, incident);
+  if (n1 > n2)
+  {
+    float n = n1/n2;
+    float sinT2 = n*n*(1.0-cosX*cosX);
+    // Total internal reflection
+    if (sinT2 > 1.0)
+      return 1.0;
+    cosX = sqrtf(1.0-sinT2);
+  }
+  float x = 1.0-cosX;
+  float ret = r0+(1.0-r0)*x*x*x*x*x;
+
+  // adjust reflect multiplier for object reflectivity
+  ret = (OBJECT_REFLECTIVITY + (1.0-OBJECT_REFLECTIVITY) * ret);
+  return ret;
 }
 
-class Ball {
-  public:
-    Ball(const vec3 position, const vec3 color) : position_(position), color_(color) {}
+Hit ball_hit(int id, const vec3 norm_ray, const vec3 origin) {
+  P(norm_ray);
+  vec3 ball_vector = balls[id].position_ - origin;
 
-    optional<Hit> pretrace(const vec3 norm_ray, const vec3 origin) const {
-      P(norm_ray);
-      vec3 ball_vector = position_ - origin;
+  float closest_point_distance_from_viewer = dot(norm_ray, ball_vector);
+  if (closest_point_distance_from_viewer < 0) {
+    return no_hit;
+  }
 
-      float closest_point_distance_from_viewer = dot(norm_ray, ball_vector);
-      if (closest_point_distance_from_viewer < 0) {
-        return nullopt;
-      }
-
-      float ball_distance2 = ball_vector.size2();
-      float distance_from_object_center2 = ball_distance2 -
-        closest_point_distance_from_viewer * closest_point_distance_from_viewer;
-      if (distance_from_object_center2 > ball_size2) {
-        return nullopt;
-      }
-      return Hit{this, closest_point_distance_from_viewer, distance_from_object_center2};
-    }
-
-    vec3 position_, color_;
-};
+  float ball_distance2 = ball_vector.size2();
+  float distance_from_object_center2 = ball_distance2 -
+    closest_point_distance_from_viewer * closest_point_distance_from_viewer;
+  if (distance_from_object_center2 > ball_size2) {
+    return no_hit;
+  }
+  return Hit(id, closest_point_distance_from_viewer, distance_from_object_center2);
+}
 
 vec3 light_trace(const Hit& p, vec3 norm_ray, vec3 origin, int depth, float distance_from_eye) {
   float distance_from_origin = p.closest_point_distance_from_viewer_ - sqrtf(ball_size2 - p.distance_from_object_center2_);
@@ -198,31 +202,23 @@ vec3 light_trace(const Hit& p, vec3 norm_ray, vec3 origin, int depth, float dist
   return light_color * (angle / (total_distance * total_distance));
 }
 
-class optional<Hit> pretrace_light(const vec3 norm_ray, const vec3 origin) {
+class Hit light_hit(const vec3 norm_ray, const vec3 origin) {
   vec3 light_vector = light_pos - origin;
   float light_distance2 = light_vector.size2();
 
   float closest_point_distance_from_origin = dot(norm_ray, light_vector);
   if (closest_point_distance_from_origin < 0) {
-    return nullopt;
+    return no_hit;
   }
 
   P(closest_point_distance_from_origin);
   float distance_from_light_center2 = light_distance2 -
     closest_point_distance_from_origin * closest_point_distance_from_origin;
   if (distance_from_light_center2 > light_size2) {
-    return nullopt;
+    return no_hit;
   }
-  return Hit{nullptr, closest_point_distance_from_origin, distance_from_light_center2};
+  return Hit(-2, closest_point_distance_from_origin, distance_from_light_center2);
 }
-
-std::vector<Ball> balls = {
-  {{-1, -2, ball_size * 1.0f}, {1, 1, 1}},
-  {{-2 * ball_size, 0, ball_size}, {0.01, 1.0, 0.01}},
-  {{2 * ball_size, 0, ball_size}, {1.00, 0.00, 1.}},
-};
-
-int max_internal_reflections = 30;
 
 vec3 trace_ball0_internal(const vec3 norm_ray, const vec3 origin, int depth, float distance_from_eye, int reflection) {
 //  assert(distance_from_eye < 10000 && distance_from_eye >= 0);
@@ -247,24 +243,22 @@ vec3 trace_ball0_internal(const vec3 norm_ray, const vec3 origin, int depth, flo
     float eta = glass_refraction_index;
     float k = 1 - eta * eta * (1 - cosi * cosi);
     vec3 refracted_ray_norm = norm_ray * eta  + normal * (eta * cosi - sqrtf(k));
-    auto res = trace(refracted_ray_norm, intersection, depth, distance_from_eye + distance_from_origin);
-    if (!res) return vec3(0,0,0);
-    return *res;
+    return trace(refracted_ray_norm, intersection, depth, distance_from_eye + distance_from_origin);
   }
 }
 
-vec3 ball_trace(const Hit& p, const vec3 norm_ray, const vec3 origin, int depth, float distance_from_eye) {
+vec3 ball_trace(const Hit p, const vec3 norm_ray, const vec3 origin, int depth, float distance_from_eye) {
   float distance_from_origin = p.closest_point_distance_from_viewer_ - sqrtf(ball_size2 - p.distance_from_object_center2_);
   vec3 intersection = origin + norm_ray * distance_from_origin;
 
   P(intersection);
-  vec3 distance_from_ball_vector = intersection - p.ball_->position_;
+  vec3 distance_from_ball_vector = intersection - balls[p.id_].position_;
 
   vec3 normal = distance_from_ball_vector * ball_inv_size;
 
   auto make_reflection = [&]() {
     vec3 ray_reflection = norm_ray - normal * (2 * dot(norm_ray, normal));
-    return compute_light(p.ball_->color_,
+    return compute_light(balls[p.id_].color_,
         normal,
         ray_reflection,
         intersection,
@@ -284,7 +278,7 @@ vec3 ball_trace(const Hit& p, const vec3 norm_ray, const vec3 origin, int depth,
         distance_from_eye + distance_from_origin, max_internal_reflections);
   };
 
-  if (p.ball_->position_ != balls[0].position_) {
+  if (p.id_ != 0) {
     return make_reflection();
   }
 
@@ -311,7 +305,7 @@ struct RoomHit {
   vec3 color;
 };
 
-RoomHit pretrace_room(const vec3 norm_ray, const vec3 point) {
+RoomHit room_hit(const vec3 norm_ray, const vec3 point) {
 //  vec3 room_a(wall_x0, wall_y0, 0);
 //  vec3 room_b(wall_x1, wall_y1, ceiling_z);
 //  vec3 tMin = (room_a - point) / norm_ray;
@@ -375,8 +369,8 @@ RoomHit pretrace_room(const vec3 norm_ray, const vec3 point) {
   return {min_dist, normal, reflection, color};
 }
 
-optional<vec3> trace_room(const vec3 norm_ray, const vec3 point, int depth, float distance_from_eye) {
-  RoomHit p = pretrace_room(norm_ray, point);
+vec3 trace_room(const vec3 norm_ray, const vec3 point, int depth, float distance_from_eye) {
+  RoomHit p = room_hit(norm_ray, point);
   vec3 ray = norm_ray * p.min_dist;
   vec3 intersection = point + ray;
   // tiles
@@ -387,52 +381,47 @@ optional<vec3> trace_room(const vec3 norm_ray, const vec3 point, int depth, floa
   return compute_light(color, p.normal, p.reflection, intersection, true, depth, distance_from_eye + p.min_dist);
 }
 
-optional<vec3> trace(const vec3 norm_ray, const vec3 origin, int depth, float distance_from_eye) {
-  optional<Hit> tracer;
-  for (const Ball& b : balls) {
-    optional<Hit> t = b.pretrace(norm_ray, origin);
-    if (tracer == nullopt || (t && t->closest_point_distance_from_viewer_ < tracer->closest_point_distance_from_viewer_)) {
-      tracer = t;
+vec3 trace(const vec3 norm_ray, const vec3 origin, int depth, float distance_from_eye) {
+  Hit hit = no_hit;
+  for (int i = 0; i < balls.size(); i++) {
+    Hit other_hit = ball_hit(i, norm_ray, origin);
+    if (other_hit.closest_point_distance_from_viewer_ < hit.closest_point_distance_from_viewer_) {
+      hit = other_hit;
     }
   }
-  optional<Hit> t = pretrace_light(norm_ray, origin);
-  if (t && (tracer == nullopt || t->closest_point_distance_from_viewer_ < tracer->closest_point_distance_from_viewer_)) {
-    return light_trace(*t, norm_ray, origin, depth, distance_from_eye);
+  Hit light = light_hit(norm_ray, origin);
+  if (light.closest_point_distance_from_viewer_ < hit.closest_point_distance_from_viewer_) {
+    return light_trace(light, norm_ray, origin, depth, distance_from_eye);
   }
-  if (tracer != nullopt) {
-    return ball_trace(*tracer, norm_ray, origin, depth, distance_from_eye);
+  if (hit.id_ >= 0) {
+    return ball_trace(hit, norm_ray, origin, depth, distance_from_eye);
   }
   return trace_room(norm_ray, origin, depth, distance_from_eye);
 }
 
-optional<float> distance(const vec3 norm_ray, const vec3 origin) {
-  optional<Hit> ball_hit;
-  for (const Ball& b : balls) {
-    optional<Hit> another_ball_hit = b.pretrace(norm_ray, origin);
-    if (ball_hit == nullopt ||
-        (another_ball_hit && another_ball_hit->closest_point_distance_from_viewer_
-           < ball_hit->closest_point_distance_from_viewer_)) {
-      P("ball hit");
-      ball_hit = another_ball_hit;
+float distance(const vec3 norm_ray, const vec3 origin) {
+  Hit hit = no_hit;
+  for (int i = 0; i < balls.size(); i++) {
+    Hit another_hit = ball_hit(i, norm_ray, origin);
+    if (another_hit.closest_point_distance_from_viewer_
+           < hit.closest_point_distance_from_viewer_) {
+      hit = another_hit;
     }
   }
-  optional<Hit> light_hit = pretrace_light(norm_ray, origin);
-  if (light_hit && (ball_hit == nullopt
-        || light_hit->closest_point_distance_from_viewer_ <
-              ball_hit->closest_point_distance_from_viewer_)) {
-    P("light hit");
-    return light_hit->closest_point_distance_from_viewer_
-      - sqrtf(light_size2 - light_hit->distance_from_object_center2_);
+  Hit light = light_hit(norm_ray, origin);
+  if (light.closest_point_distance_from_viewer_ <
+              hit.closest_point_distance_from_viewer_) {
+    return light.closest_point_distance_from_viewer_
+      - sqrtf(light_size2 - light.distance_from_object_center2_);
   }
 
-  if (ball_hit != nullopt) {
-    float distance_from_origin = ball_hit->closest_point_distance_from_viewer_
-      - sqrtf(ball_size2 - ball_hit->distance_from_object_center2_);
-    P("ball hit selected");
+  if (hit.id_ >= 0) {
+    float distance_from_origin = hit.closest_point_distance_from_viewer_
+      - sqrtf(ball_size2 - hit.distance_from_object_center2_);
     return distance_from_origin;
   }
 
-  RoomHit rt = pretrace_room(norm_ray, origin);
+  RoomHit rt = room_hit(norm_ray, origin);
   P(rt.min_dist);
   return rt.min_dist;
 }
@@ -451,10 +440,8 @@ vec3 compute_light(
     if (rought_surface) {
       reflection = (reflection + distr()).normalize();
     }
-    auto second_ray = trace(reflection, point, depth - 1, distance_from_eye);
-    if (second_ray) {
-      total_color = (color * *second_ray) * defuse_attenuation;
-    }
+    vec3 second_ray = trace(reflection, point, depth - 1, distance_from_eye);
+    total_color = color * second_ray * defuse_attenuation;
   }
   if (!rought_surface) {
     return total_color;
@@ -471,13 +458,11 @@ vec3 compute_light(
   float light_distance = 1/light_distance_inv;
   vec3 light_from_point_norm = light_from_point * light_distance_inv;
 
-  for (auto b : balls) {
-    auto res = b.pretrace(light_from_point_norm, point);
-    if (res != nullopt) {
-      if (res->closest_point_distance_from_viewer_< light_distance) {
-        // Obstracted
-        return total_color;
-      }
+  for (int i = 0; i < balls.size(); i++) {
+    Hit hit = ball_hit(i, light_from_point_norm, point);
+    if (hit.closest_point_distance_from_viewer_ < light_distance) {
+      // Obstracted
+      return total_color;
     }
   }
 
@@ -540,10 +525,7 @@ void set_focus_distance(float x, float y) {
   P(ray);
   vec3 norm_ray = ray.normalize();
   P(norm_ray);
-  auto res = distance(norm_ray, viewer);
-  if (res) {
-    focused_distance = *res;
-  }
+  focused_distance = distance(norm_ray, viewer);
 }
 
 void drawThread(int id) {
@@ -570,16 +552,14 @@ void drawThread(int id) {
         trace_values = x == 500 && y == 500;
         auto res = trace(new_ray, me, max_depth, 0);
         // accumulate
-        *my_fppixels = BasePoint<double>::convert(*my_fppixels) + BasePoint<double>::convert(*res);
+        *my_fppixels += BasePoint<double>::convert(res);
         res = BasePoint<float>::convert(*my_fppixels++ * one_mul);
 
-        if (res) {
-          vec3 saturated = saturateColor(*res);
-          *my_pixels++ = colorToInt(saturated.x);
-          *my_pixels++ = colorToInt(saturated.y);
-          *my_pixels++ = colorToInt(saturated.z);
-          *my_pixels++ = 255;
-        }
+        vec3 saturated = saturateColor(res);
+        *my_pixels++ = colorToInt(saturated.x);
+        *my_pixels++ = colorToInt(saturated.y);
+        *my_pixels++ = colorToInt(saturated.z);
+        *my_pixels++ = 255;
         ray += sight_x;
       }
     } else {
@@ -672,25 +652,25 @@ int main(void) {
     pixels = new Uint8[window_width * window_height * 4];
 
     SDL_RenderPresent(renderer);
-    optional<Uint32> ts_move_forward;
-    optional<Uint32> ts_move_backward;
-    optional<Uint32> ts_strafe_left;
-    optional<Uint32> ts_strafe_right;
+    Uint32 ts_move_forward;
+    Uint32 ts_move_backward;
+    Uint32 ts_strafe_left;
+    Uint32 ts_strafe_right;
 
     bool relative_motion = false;
     update_viewpoint();
     int mouse_x_before_rel = 0;
     int mouse_y_before_rel = 0;
 
-    auto apply_motion = [](vec3 dir, optional<Uint32>* prev_ts, Uint32 ts) {
-      if (*prev_ts == nullopt) {
+    auto apply_motion = [](vec3 dir, Uint32* prev_ts, Uint32 ts) {
+      if (*prev_ts == 0) {
         return;
       }
-      if (ts < **prev_ts) {
+      if (ts < *prev_ts) {
         return;
       }
       dir.z = 0;
-      int dt = ts - **prev_ts;
+      int dt = ts - *prev_ts;
       viewer += dir * (0.001f * dt);
       *prev_ts = ts;
       reset_accumulate();
@@ -747,10 +727,11 @@ int main(void) {
                          break;
           case SDL_KEYUP:
           case SDL_KEYDOWN:
-                         auto update_key_ts = [&](optional<Uint32>* state) {
-                           printf("State %d ts = %d\n", event.key.state, event.key.timestamp);
-                           *state = (event.key.state == SDL_PRESSED) ? optional<Uint32>(event.key.timestamp) : nullopt;
+                         auto update_key_ts = [&](Uint32* state) {
+//                           printf("State %d ts = %d\n", event.key.state, event.key.timestamp);
+                           *state = (event.key.state == SDL_PRESSED) ? event.key.timestamp : 0;
                          };
+
                          switch (event.key.keysym.scancode) {
                            case SDL_SCANCODE_ESCAPE:
                              die = true;
