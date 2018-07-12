@@ -33,6 +33,22 @@ struct Hit {
   float distance_from_object_center2_;
 };
 
+struct Room {
+  vec3 a_;
+  vec3 b_;
+} room = {vec3 (-6.0f, -6.0f, 0.0f ), vec3 (6.0f, 6.0f, 6.0f)};
+
+struct RoomHit {
+  RoomHit(float m, const vec3 n, const vec3 r, const vec3 c)
+    : min_dist(m), normal(n), reflection(r), color(c) {}
+
+  float min_dist;
+  vec3 normal;
+  vec3 reflection;
+  vec3 color;
+};
+
+
 float max_distance = 1000;
 Hit no_hit = Hit(-1, max_distance, 0);
 
@@ -42,7 +58,7 @@ bool trace_values = false;
 
 vec3 light_pos = vec3(-4.2, -3, 2);
 float light_size = 0.9;
-float light_power = 50.4;
+float light_power = 150.4;
 vec3 light_color = vec3(light_power, light_power, light_power);
 float light_size2 = light_size * light_size;
 float light_inv_size = 1 / light_size;
@@ -65,7 +81,7 @@ int max_depth = 2;
 
 std::random_device rd;
 std::mt19937 gen(rd());
-float focused_distance = 1;
+float focused_distance = 3.1;
 float lense_blur = 0.01;
 std::normal_distribution<float> lense_gen{-lense_blur,lense_blur};
 std::uniform_real_distribution<float> reflect_gen{0.f, 1.f};
@@ -139,6 +155,16 @@ void assert_norm(const vec3 v) {
   assert(s > 0.99);
   assert(s < 1.01);
 }
+
+// GLUE Code
+
+float sign(float a) {
+  return std::copysign(1, a);
+}
+using std::min;
+using std::max;
+
+// END GLUE Code
 
 vec3 black = vec3(0, 0, 0);
 
@@ -220,31 +246,36 @@ class Hit light_hit(const vec3 norm_ray, const vec3 origin) {
   return Hit(-2, closest_point_distance_from_origin, distance_from_light_center2);
 }
 
-vec3 trace_ball0_internal(const vec3 norm_ray, const vec3 origin, int depth, float distance_from_eye, int reflection) {
-//  assert(distance_from_eye < 10000 && distance_from_eye >= 0);
-  vec3 ball_vector = balls[0].position_ - origin;
-  float closest_point_distance_from_viewer = dot(norm_ray, ball_vector);
-  float ball_distance2 = ball_vector.size2();
+vec3 trace_ball0_internal(vec3 norm_ray, vec3 origin, int depth, float distance_from_eye) {
+  for (int i = 0; i < max_internal_reflections; i++) {
+    vec3 ball_vector = balls[0].position_ - origin;
+    float closest_point_distance_from_viewer = dot(norm_ray, ball_vector);
+    float ball_distance2 = ball_vector.size2();
 
-  float distance_from_origin = 2 * closest_point_distance_from_viewer;
-  vec3 intersection = origin + norm_ray * distance_from_origin;
-  vec3 distance_from_ball_vector = intersection - balls[0].position_;
-  vec3 normal = distance_from_ball_vector * ball_inv_size;
+    float distance_from_origin = 2 * closest_point_distance_from_viewer;
+    vec3 intersection = origin + norm_ray * distance_from_origin;
+    vec3 distance_from_ball_vector = intersection - balls[0].position_;
+    vec3 normal = distance_from_ball_vector * ball_inv_size;
 
-  if (FresnelReflectAmount(glass_refraction_index, 1, normal, norm_ray) > reflect_gen(gen)) {
-    return vec3(0,0,0);
-    vec3 ray_reflection = norm_ray + normal * (2 * dot(norm_ray, normal));
-    if (reflection <= 0) return vec3();
-    return trace_ball0_internal(ray_reflection, origin, depth, distance_from_eye + distance_from_origin, --reflection);
-  } else {
-    // refract
-    float cosi = dot(normal, norm_ray);
-    normal = -normal;
-    float eta = glass_refraction_index;
-    float k = 1 - eta * eta * (1 - cosi * cosi);
-    vec3 refracted_ray_norm = norm_ray * eta  + normal * (eta * cosi - sqrtf(k));
-    return trace(refracted_ray_norm, intersection, depth, distance_from_eye + distance_from_origin);
+    if (FresnelReflectAmount(glass_refraction_index, 1, normal, norm_ray) > reflect_gen(gen)) {
+      return vec3(0,0,0);
+      vec3 ray_reflection = norm_ray + normal * (2 * dot(norm_ray, normal));
+      // Restart from new point
+      norm_ray = ray_reflection;
+      origin = intersection;
+      distance_from_eye += distance_from_origin;
+      continue;
+    } else {
+      // refract
+      float cosi = dot(normal, norm_ray);
+      normal = -normal;
+      float eta = glass_refraction_index;
+      float k = 1 - eta * eta * (1 - cosi * cosi);
+      vec3 refracted_ray_norm = norm_ray * eta  + normal * (eta * cosi - sqrtf(k));
+      return trace(refracted_ray_norm, intersection, depth, distance_from_eye + distance_from_origin);
+    }
   }
+  return vec3(0,0,0);
 }
 
 vec3 ball_trace(const Hit p, const vec3 norm_ray, const vec3 origin, int depth, float distance_from_eye) {
@@ -275,7 +306,7 @@ vec3 ball_trace(const Hit p, const vec3 norm_ray, const vec3 origin, int depth, 
     float k = 1 - eta * eta * (1 - cosi * cosi);
     vec3 refracted_ray_norm = norm_ray * eta  + normal * (eta * cosi - sqrtf(k));
     return trace_ball0_internal(refracted_ray_norm, intersection, depth,
-        distance_from_eye + distance_from_origin, max_internal_reflections);
+        distance_from_eye + distance_from_origin);
   };
 
   if (p.id_ != 0) {
@@ -298,75 +329,44 @@ vec3 ball_trace(const Hit p, const vec3 norm_ray, const vec3 origin, int depth, 
   }
 }
 
-struct RoomHit {
-  float min_dist;
-  vec3 normal;
-  vec3 reflection;
-  vec3 color;
-};
-
-RoomHit room_hit(const vec3 norm_ray, const vec3 point) {
-//  vec3 room_a(wall_x0, wall_y0, 0);
-//  vec3 room_b(wall_x1, wall_y1, ceiling_z);
-//  vec3 tMin = (room_a - point) / norm_ray;
-//  vec3 tMax = (room_b - point) / norm_ray;
-//  vec3 t1 = min(dist_a, dist_b);
-//  vec3 t2 = max(dist_a, dist_b);
+RoomHit room_hit(const vec3 norm_ray, const vec3 origin) {
+  vec3 tMin = (room.a_ - origin) / norm_ray;
+  vec3 tMax = (room.b_ - origin) / norm_ray;
+  vec3 t1 = min(tMin, tMax);
+  vec3 t2 = max(tMin, tMax);
 //  float tNear = max(max(t1.x, t1.y), t1.z);
-//  float tFar = min(min(t2.x, t2.y), t2.z);
+  float tFar = min(min(t2.x, t2.y), t2.z);
 
-  float dist_x, dist_y, dist_z;
-  if (norm_ray.z >= 0) {
-    // tracng ceiling
-    dist_z = (ceiling_z-point.z) / norm_ray.z;
-  } else {
-    // tracing floor
-    dist_z = (/*0*/-point.z) / norm_ray.z;
-  }
-  if (norm_ray.x >= 0) {
-    // tracing ceiling
-    dist_x = (wall_x1-point.x) / norm_ray.x;
-  } else {
-    // tracing floor
-    dist_x = (wall_x0-point.x) / norm_ray.x;
-  }
-
-  if (norm_ray.y >= 0) {
-    // tracing ceiling
-    dist_y = (wall_y1-point.y) / norm_ray.y;
-  } else {
-    // tracing floor
-    dist_y = (wall_y0-point.y) / norm_ray.y;
-  }
   vec3 normal;
   vec3 reflection;
   float min_dist;
   vec3 color;
-  if (dist_y < dist_z) {
+
+  if (t2.y < t2.z) {
     color = wall_color;
-    if (dist_x < dist_y) {
-      min_dist = dist_x;
+    if (t2.x < t2.y) {
+      min_dist = t2.x;
       reflection = vec3(-norm_ray.x, norm_ray.y, norm_ray.z);
-      normal = vec3(std::copysign(1, reflection.x), 0, 0);
+      normal = vec3(sign(reflection.x), 0, 0);
     } else {
-      min_dist = dist_y;
+      min_dist = t2.y;
       reflection = vec3(norm_ray.x, -norm_ray.y, norm_ray.z);
-      normal = vec3(0, std::copysign(1, reflection.y), 0);
+      normal = vec3(0, sign(reflection.y), 0);
     }
   } else {
-    if (dist_x < dist_z) {
-      min_dist = dist_x;
+    if (t2.x < t2.z) {
+      min_dist = t2.x;
       reflection = vec3(-norm_ray.x, norm_ray.y, norm_ray.z);
-      normal = vec3(std::copysign(1, reflection.x), 0, 0);
+      normal = vec3(sign(reflection.x), 0, 0);
       color = wall_color;
     } else {
-      min_dist = dist_z;
+      min_dist = t2.z;
       reflection = vec3(norm_ray.x, norm_ray.y, -norm_ray.z);
-      normal = vec3(0, 0, std::copysign(1, reflection.z));
-      color = std::signbit(reflection.z) ? ceiling_color : floor_color;
+      normal = vec3(0, 0, sign(reflection.z));
+      color = reflection.z < 0 ? ceiling_color : floor_color;
     }
   }
-  return {min_dist, normal, reflection, color};
+  return RoomHit(min_dist, normal, reflection, color);
 }
 
 vec3 trace_room(const vec3 norm_ray, const vec3 point, int depth, float distance_from_eye) {
@@ -556,9 +556,9 @@ void drawThread(int id) {
         res = BasePoint<float>::convert(*my_fppixels++ * one_mul);
 
         vec3 saturated = saturateColor(res);
-        *my_pixels++ = colorToInt(saturated.x);
-        *my_pixels++ = colorToInt(saturated.y);
         *my_pixels++ = colorToInt(saturated.z);
+        *my_pixels++ = colorToInt(saturated.y);
+        *my_pixels++ = colorToInt(saturated.x);
         *my_pixels++ = 255;
         ray += sight_x;
       }
