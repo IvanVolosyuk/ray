@@ -99,7 +99,7 @@ vec3 light_distr() {
 
 int numCPU = 0;
 
-void print(const char* msg, const vec3& v) {
+void print(const char* msg, const vec3 v) {
   if (trace_values)
     printf("%s: %f %f %f\n", msg, v.x, v.y, v.z);
 }
@@ -114,7 +114,7 @@ void print(const char*, const char* v) {
     printf("%s\n", v);
 }
 
-void assert_norm(const vec3& v) {
+void assert_norm(const vec3 v) {
   float s = v.size();
   assert(s > 0.99);
   assert(s < 1.01);
@@ -122,9 +122,9 @@ void assert_norm(const vec3& v) {
 
 vec3 black = vec3(0, 0, 0);
 
-optional<vec3> trace(const vec3& norm_ray, const vec3& origin, int depth, float distance_from_eye);
-vec3 compute_light(const vec3& color, const vec3& normal, const vec3& reflection,
-    const vec3& point, bool rought_surface, int depth, float distance_from_eye);
+optional<vec3> trace(const vec3 norm_ray, const vec3 origin, int depth, float distance_from_eye);
+vec3 compute_light(const vec3 color, const vec3 normal, const vec3 reflection,
+    const vec3 point, bool rought_surface, int depth, float distance_from_eye);
 
 class Ball;
 
@@ -163,9 +163,9 @@ float FresnelReflectAmount (float n1, float n2, vec3 normal, vec3 incident) {
 
 class Ball {
   public:
-    Ball(const vec3& position, const vec3& color) : position_(position), color_(color) {}
+    Ball(const vec3 position, const vec3 color) : position_(position), color_(color) {}
 
-    optional<Hit> pretrace(const vec3& norm_ray, const vec3& origin) const {
+    optional<Hit> pretrace(const vec3 norm_ray, const vec3 origin) const {
       P(norm_ray);
       vec3 ball_vector = position_ - origin;
 
@@ -198,7 +198,7 @@ vec3 light_trace(const Hit& p, vec3 norm_ray, vec3 origin, int depth, float dist
   return light_color * (angle / (total_distance * total_distance));
 }
 
-class optional<Hit> pretrace_light(const vec3& norm_ray, const vec3& origin) {
+class optional<Hit> pretrace_light(const vec3 norm_ray, const vec3 origin) {
   vec3 light_vector = light_pos - origin;
   float light_distance2 = light_vector.size2();
 
@@ -224,7 +224,7 @@ std::vector<Ball> balls = {
 
 int max_internal_reflections = 30;
 
-vec3 trace_ball0_internal(const vec3& norm_ray, const vec3& origin, int depth, float distance_from_eye, int reflection) {
+vec3 trace_ball0_internal(const vec3 norm_ray, const vec3 origin, int depth, float distance_from_eye, int reflection) {
 //  assert(distance_from_eye < 10000 && distance_from_eye >= 0);
   vec3 ball_vector = balls[0].position_ - origin;
   float closest_point_distance_from_viewer = dot(norm_ray, ball_vector);
@@ -253,7 +253,7 @@ vec3 trace_ball0_internal(const vec3& norm_ray, const vec3& origin, int depth, f
   }
 }
 
-vec3 ball_trace(const Hit& p, const vec3& norm_ray, const vec3& origin, int depth, float distance_from_eye) {
+vec3 ball_trace(const Hit& p, const vec3 norm_ray, const vec3 origin, int depth, float distance_from_eye) {
   float distance_from_origin = p.closest_point_distance_from_viewer_ - sqrtf(ball_size2 - p.distance_from_object_center2_);
   vec3 intersection = origin + norm_ray * distance_from_origin;
 
@@ -311,7 +311,7 @@ struct RoomHit {
   vec3 color;
 };
 
-RoomHit pretrace_room(const vec3& norm_ray, const vec3& point) {
+RoomHit pretrace_room(const vec3 norm_ray, const vec3 point) {
 //  vec3 room_a(wall_x0, wall_y0, 0);
 //  vec3 room_b(wall_x1, wall_y1, ceiling_z);
 //  vec3 tMin = (room_a - point) / norm_ray;
@@ -375,7 +375,7 @@ RoomHit pretrace_room(const vec3& norm_ray, const vec3& point) {
   return {min_dist, normal, reflection, color};
 }
 
-optional<vec3> trace_room(const vec3& norm_ray, const vec3& point, int depth, float distance_from_eye) {
+optional<vec3> trace_room(const vec3 norm_ray, const vec3 point, int depth, float distance_from_eye) {
   RoomHit p = pretrace_room(norm_ray, point);
   vec3 ray = norm_ray * p.min_dist;
   vec3 intersection = point + ray;
@@ -387,7 +387,7 @@ optional<vec3> trace_room(const vec3& norm_ray, const vec3& point, int depth, fl
   return compute_light(color, p.normal, p.reflection, intersection, true, depth, distance_from_eye + p.min_dist);
 }
 
-optional<vec3> trace(const vec3& norm_ray, const vec3& origin, int depth, float distance_from_eye) {
+optional<vec3> trace(const vec3 norm_ray, const vec3 origin, int depth, float distance_from_eye) {
   optional<Hit> tracer;
   for (const Ball& b : balls) {
     optional<Hit> t = b.pretrace(norm_ray, origin);
@@ -405,7 +405,7 @@ optional<vec3> trace(const vec3& norm_ray, const vec3& origin, int depth, float 
   return trace_room(norm_ray, origin, depth, distance_from_eye);
 }
 
-optional<float> distance(const vec3& norm_ray, const vec3& origin) {
+optional<float> distance(const vec3 norm_ray, const vec3 origin) {
   optional<Hit> ball_hit;
   for (const Ball& b : balls) {
     optional<Hit> another_ball_hit = b.pretrace(norm_ray, origin);
@@ -438,10 +438,10 @@ optional<float> distance(const vec3& norm_ray, const vec3& origin) {
 }
 
 vec3 compute_light(
-    const vec3& color,
-    const vec3& normal,
-    const vec3& reflection_in,
-    const vec3& point,
+    const vec3 color,
+    const vec3 normal,
+    const vec3 reflection_in,
+    const vec3 point,
     bool rought_surface,
     int depth,
     float distance_from_eye) {
