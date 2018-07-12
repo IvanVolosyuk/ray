@@ -1,9 +1,6 @@
 #ifndef __VECTOR_H__
 #define __VECTOR_H__
 
-#define GL_GLEXT_PROTOTYPES
-#include <GL/glut.h>
-#include <GL/glext.h>
 #include <assert.h>
 #include <math.h>
 #include <algorithm>
@@ -11,6 +8,9 @@
 #ifndef M_PI
 # define M_PI 3.14159265358979323846  /* pi */
 #endif
+
+#define GL_GLEXT_PROTOTYPES 1
+#include <GL/glcorearb.h>
 
 template<class T>
 class BasePoint {
@@ -116,36 +116,6 @@ template<class T>
 BasePoint<T> operator *(const Matrix &m, const Point& v);
 
 /***** INLINE FUNCTIONS ********/
-
-/* GL specific */
-static inline void
-glNormal(Point n) {
-    glNormal3f(n.x, n.y, n.z);
-}
-
-static inline void
-glVertex(Point p) {
-    glVertex3f(p.x, p.y, p.z);
-}
-
-static inline void
-glColor(Point c) {
-    glColor3f(c.x, c.y, c.z);
-}
-
-static inline void
-glTranslate(Point t) {
-    glTranslatef(t.x, t.y, t.z);
-}
-static inline void
-glMultMatrix(const Matrix& m) {
-    glMultMatrixf(m.data);
-}
-
-static inline void
-glLoadMatrix(const Matrix& m) {
-    glLoadMatrixf(m.data);
-}
 
 template<class T>
 inline BasePoint<T>::BasePoint(const T nx, const T ny, const T nz) {

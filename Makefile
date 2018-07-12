@@ -1,4 +1,4 @@
-TARGETS=ray
+TARGETS=ray shader.comp
 
 all: ${TARGETS}
 

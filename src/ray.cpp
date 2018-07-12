@@ -4,11 +4,12 @@
 #include <mutex>
 #include <stdlib.h>
 #include <condition_variable>
+#include <iostream>
 
 #include "ray.hpp"
+#include "gl_renderer.hpp"
 #include "vector.hpp"
 
-#include <SDL2/SDL.h>
 #include <algorithm>
 #include <random>
 #include <functional>
@@ -259,7 +260,6 @@ vec3 trace_ball0_internal(vec3 norm_ray, vec3 origin, int depth, float distance_
 
     if (FresnelReflectAmount(glass_refraction_index, 1, normal, norm_ray) > reflect_gen(gen)) {
       vec3 ray_reflection = norm_ray - normal * (2 * dot(norm_ray, normal));
-      assert(ray_reflection.normalize().size2() < 1.001);
       // Restart from new point
       norm_ray = ray_reflection;
       origin = intersection;
@@ -637,10 +637,22 @@ int main(void) {
     printf("Num CPUs: %d\n", numCPU);
     check_saturation();
     SDL_Event event;
-    SDL_Renderer *renderer;
-    SDL_Window *window;
+    SDL_Renderer *renderer = nullptr;
+    SDL_Window *window = nullptr;
 
-    SDL_Init(SDL_INIT_VIDEO);
+    if (SDL_Init( SDL_INIT_VIDEO) < 0) {
+      std::cerr << "Init failed: " << SDL_GetError() << std::endl;
+      return 1;
+    }
+
+
+    auto gl_renderer = OpenglRenderer::Create(window_width, window_height);
+    assert(gl_renderer.get() != nullptr);
+
+    SDL_Texture * texture = nullptr;
+
+#if 0
+    // FIXME: fallback
     SDL_CreateWindowAndRenderer(window_width, window_height, 0, &window, &renderer);
     SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0);
     SDL_RenderClear(renderer);
@@ -651,6 +663,7 @@ int main(void) {
     pixels = new Uint8[window_width * window_height * 4];
 
     SDL_RenderPresent(renderer);
+#endif
     Uint32 ts_move_forward;
     Uint32 ts_move_backward;
     Uint32 ts_strafe_left;
@@ -733,9 +746,11 @@ int main(void) {
 
                          switch (event.key.keysym.scancode) {
                            case SDL_SCANCODE_ESCAPE:
-                             die = true;
-                             draw();
-                             for (auto& t : threads) t.join();
+                             if (false) {
+                               die = true;
+                               draw();
+                               for (auto& t : threads) t.join();
+                             }
                              goto exit;
                            case SDL_SCANCODE_W:
                              move_forward(event.key.timestamp);
@@ -850,15 +865,20 @@ int main(void) {
       move_left(newTime);
       move_right(newTime);
 
-      draw();
-      SDL_UpdateTexture(texture, NULL, (void*)pixels, window_width * sizeof(Uint32));
-      SDL_RenderCopy(renderer, texture, NULL, NULL);
-      SDL_RenderPresent(renderer);
-      event.type = -1;
+      if (false) {
+        draw();
+        SDL_UpdateTexture(texture, NULL, (void*)pixels, window_width * sizeof(Uint32));
+        SDL_RenderCopy(renderer, texture, NULL, NULL);
+        SDL_RenderPresent(renderer);
+      }
+      gl_renderer->draw();
     }
 exit:
-    SDL_DestroyRenderer(renderer);
+    if (false) {
+      SDL_DestroyRenderer(renderer);
+    }
     SDL_DestroyWindow(window);
     SDL_Quit();
     return EXIT_SUCCESS;
-}
+
+    }
