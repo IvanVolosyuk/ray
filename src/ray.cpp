@@ -20,8 +20,6 @@ using namespace std::placeholders;
 //#define P(x) print(#x, x);
 #define P(x) {}
 
-using vec3 = Point;
-
 struct Ball {
   Ball(const vec3 position, const vec3 color) : position_(position), color_(color) {}
   vec3 position_, color_;
@@ -871,7 +869,7 @@ int main(void) {
         SDL_RenderCopy(renderer, texture, NULL, NULL);
         SDL_RenderPresent(renderer);
       }
-      gl_renderer->draw();
+      gl_renderer->draw(viewer, sight, focused_distance);
     }
 exit:
     if (false) {

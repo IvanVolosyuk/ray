@@ -27,6 +27,12 @@ constexpr int OPENGL_MAJOR_VERSION = 4;
 constexpr int OPENGL_MINOR_VERSION = 5;
 constexpr SDL_GLprofile OPENGL_PROFILE = SDL_GLprofile::SDL_GL_CONTEXT_PROFILE_CORE;
 
+struct shader_data_t
+{
+  float viewer[4];
+  float sight[4];
+} shader_data;
+
 std::vector<std::string> split(const std::string &s, char delim) {
   std::stringstream ss(s);
   std::string item;
@@ -255,6 +261,22 @@ bool OpenglRenderer::setup() {
     glGetIntegerv( GL_MAX_COMPUTE_WORK_GROUP_INVOCATIONS, &work_grp_inv );
     printf( "max computer shader invocations %i\n", work_grp_inv );
   }
+
+  viewer_location = glGetUniformLocation(ray_program, "viewer");
+  if (viewer_location == -1) {
+    std::cerr << "Viewer location undefined: " << SDL_GetError() << std::endl;
+    return false;
+  }
+  sight_location = glGetUniformLocation(ray_program, "sight");
+  if (sight_location == -1) {
+    std::cerr << "Sight location undefined: " << SDL_GetError() << std::endl;
+    return false;
+  }
+  focused_distance_location = glGetUniformLocation(ray_program, "focused_distance");
+  if (focused_distance_location == -1) {
+    std::cerr << "Focused distance location undefined: " << SDL_GetError() << std::endl;
+    return false;
+  }
   return true;
 }
 
@@ -304,9 +326,15 @@ std::unique_ptr<OpenglRenderer> OpenglRenderer::Create(int window_width, int win
   return std::move(r);
 }
 
-void OpenglRenderer::draw() {
-  // launch compute shaders!
+
+void OpenglRenderer::draw(vec3 viewer, vec3 sight, float focused_distance) {
+
   glUseProgram( ray_program );
+  glUniform3f(viewer_location, viewer.x, viewer.y, viewer.z);
+  glUniform3f(sight_location, sight.x, sight.y, sight.z);
+  glUniform1f(focused_distance_location, focused_distance);
+
+  // launch compute shaders!
   glDispatchCompute(width_, height_, 1 );
 
   // prevent sampling befor all writes to image are done

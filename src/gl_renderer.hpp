@@ -1,3 +1,5 @@
+#include "vector.hpp"
+
 #include <memory>
 #define GL_GLEXT_PROTOTYPES 1
 #include <GL/glcorearb.h>
@@ -10,9 +12,10 @@ class OpenglRenderer {
   public:
   ~OpenglRenderer();
 
-  static std::unique_ptr<OpenglRenderer> Create(int window_width, int window_height);
+  static std::unique_ptr<OpenglRenderer> Create(
+      int window_width, int window_height);
   bool setup();
-  void draw();
+  void draw(vec3 viewer, vec3 sight, float focused_distance);
 
   private:
   SDL_Window *window_ = nullptr;
@@ -24,4 +27,8 @@ class OpenglRenderer {
   GLuint quad_vao;
   GLuint quad_program;
   GLuint tex_output;
+
+  GLint viewer_location;
+  GLint sight_location;
+  GLint focused_distance_location;
 };

@@ -1,6 +1,10 @@
 layout (local_size_x = 1, local_size_y = 1) in;
 layout (rgba32f, binding = 0) uniform image2D img_output;
 
+uniform vec3 viewer;
+uniform vec3 sight;
+uniform float focused_distance;
+
 struct Room {
   vec3 a_;
   vec3 b_;
@@ -25,12 +29,13 @@ float ball_inv_size = 1.f / ball_size;
 float defuse_attenuation = 0.4;
 float max_distance = 1000;
 
-vec3 viewer = vec3 (0f, -5.5f, 1.5f);
+// vec3 viewer = vec3 (0f, -5.5f, 1.5f);
+// vec3 sight = normalize(vec3(0.0, 1.0, -0.1));
+// float focused_distance = 3.1;
+
 int max_rays = 32;
 int max_internal_reflections = 30;
-float focused_distance = 3.1;
 
-vec3 sight = normalize(vec3(0.0, 1.0, -0.1));
 
 struct Ball {
   vec3 position_;
@@ -92,7 +97,7 @@ vec3 light_distr(in vec3 point) {
 }
 
 float lense_gen(in float a) {
-  return srand(a) * 0.11;
+  return srand(a) * 0.03;
 }
 
 float antialiasing(in float c) {
@@ -255,12 +260,12 @@ void main () {
 
   for (int i = 0; i < max_rays; i++) {
     vec3 focused_ray = normalize(norm_ray + aax * antialiasing(i) + aay * antialiasing(i));
-    vec3 focused_point = viewer + focused_ray * focused_distance;
-    vec3 me = viewer + sight_x * lense_gen(x * 0.0123 + y * 0.07543 + i * 0.12)
+    vec3 focused_point = origin + focused_ray * focused_distance;
+    vec3 me = origin + sight_x * lense_gen(x * 0.0123 + y * 0.07543 + i * 0.12)
                      + sight_y * lense_gen(x * 0.0652 + y * 0.022571 + i * 0.77);
     vec3 new_ray = normalize(focused_point - me);
 
-    pixel += trace_3(new_ray, me, 0.f);
+    pixel += trace_2(new_ray, me, 0.f);
   }
   pixel /= max_rays;
 

@@ -43,6 +43,8 @@ class BasePoint {
 };
 
 using Point = BasePoint<float>;
+using vec3 = Point;
+
 
 class Matrix;
 static inline void glMultMatrix(const Matrix& m);
