@@ -19,18 +19,17 @@ using namespace std::placeholders;
 //#define P(x) print(#x, x);
 #define P(x) {}
 
-
-using Vector = Point;
+using vec3 = Point;
 #define optional boost::optional
 #define nullopt boost::none
 
 int window_width = 480;
 int window_height = 270;
 
-Point light_pos = Point(-4.2, -3, 2);
+vec3 light_pos = vec3(-4.2, -3, 2);
 float light_size = 0.9;
 float light_power = 50.4;
-Point light_color = Point(light_power, light_power, light_power);
+vec3 light_color = vec3(light_power, light_power, light_power);
 float light_size2 = light_size * light_size;
 float light_inv_size = 1 / light_size;
 
@@ -39,10 +38,9 @@ float ball_size2 = ball_size * ball_size;
 float ball_inv_size = 1 / ball_size;
 bool trace_values = false;
 
-Vector floor_color(0.14, 1.0, 0.14);
-Vector wall_color(0.85, 0.8, 0.48);
-Vector ceiling_color(0.98, 0.98, 0.98);
-Vector floor_normal(0, 0, 1);
+vec3 floor_color = vec3 (0.14, 1.0, 0.14);
+vec3 wall_color = vec3 (0.85, 0.8, 0.48);
+vec3 ceiling_color = vec3 (0.98, 0.98, 0.98);
 float defuse_attenuation = 0.4;
 
 int max_depth = 2;
@@ -81,19 +79,19 @@ unsigned long xorshf96(void) {          //period 2^96-1
   return z;
 }
 
-Vector distr() {
-  return Vector(wall_gen(gen), wall_gen(gen), wall_gen(gen));
+vec3 distr() {
+  return vec3(wall_gen(gen), wall_gen(gen), wall_gen(gen));
   long x = xorshf96();
-  return Vector(
+  return vec3(
       (x & 0xFFFF) * (0.1/0x10000),
       ((x>>16) & 0xFFFF) * (0.1/0x10000),
       ((x>>24) & 0xFFFF) * (0.1/0x10000));
 }
 
-Vector light_distr() {
-  return Vector(light_gen(gen), light_gen(gen), light_gen(gen));
+vec3 light_distr() {
+  return vec3(light_gen(gen), light_gen(gen), light_gen(gen));
   long x = xorshf96();
-  return Vector(
+  return vec3(
       (x & 0xFFFF) * (1./0x10000),
       ((x>>16) & 0xFFFF) * (1./0x10000),
       ((x>>24) & 0xFFFF) * (1./0x10000));
@@ -101,7 +99,7 @@ Vector light_distr() {
 
 int numCPU = 0;
 
-void print(const char* msg, const Vector& v) {
+void print(const char* msg, const vec3& v) {
   if (trace_values)
     printf("%s: %f %f %f\n", msg, v.x, v.y, v.z);
 }
@@ -116,17 +114,17 @@ void print(const char*, const char* v) {
     printf("%s\n", v);
 }
 
-void assert_norm(const Vector& v) {
+void assert_norm(const vec3& v) {
   float s = v.size();
   assert(s > 0.99);
   assert(s < 1.01);
 }
 
-Point black = Point(0, 0, 0);
+vec3 black = vec3(0, 0, 0);
 
-optional<Point> trace(const Vector& norm_ray, const Vector& origin, int depth, float distance_from_eye);
-Point compute_light(const Point& color, const Vector& normal, const Vector& reflection,
-    const Point& point, bool rought_surface, int depth, float distance_from_eye);
+optional<vec3> trace(const vec3& norm_ray, const vec3& origin, int depth, float distance_from_eye);
+vec3 compute_light(const vec3& color, const vec3& normal, const vec3& reflection,
+    const vec3& point, bool rought_surface, int depth, float distance_from_eye);
 
 class Ball;
 
@@ -141,7 +139,7 @@ class Hit {
 float glass_refraction_index = 1.492; //1.458;
 float OBJECT_REFLECTIVITY = 0;
 
-float FresnelReflectAmount (float n1, float n2, Vector normal, Vector incident) {
+float FresnelReflectAmount (float n1, float n2, vec3 normal, vec3 incident) {
         // Schlick aproximation
         float r0 = (n1-n2) / (n1+n2);
         r0 *= r0;
@@ -165,11 +163,11 @@ float FresnelReflectAmount (float n1, float n2, Vector normal, Vector incident) 
 
 class Ball {
   public:
-    Ball(const Vector& position, const Vector& color) : position_(position), color_(color) {}
+    Ball(const vec3& position, const vec3& color) : position_(position), color_(color) {}
 
-    optional<Hit> pretrace(const Vector& norm_ray, const Vector& origin) const {
+    optional<Hit> pretrace(const vec3& norm_ray, const vec3& origin) const {
       P(norm_ray);
-      Vector ball_vector = position_ - origin;
+      vec3 ball_vector = position_ - origin;
 
       float closest_point_distance_from_viewer = dot(norm_ray, ball_vector);
       if (closest_point_distance_from_viewer < 0) {
@@ -185,23 +183,23 @@ class Ball {
       return Hit{this, closest_point_distance_from_viewer, distance_from_object_center2};
     }
 
-    Vector position_, color_;
+    vec3 position_, color_;
 };
 
-Point light_trace(const Hit& p, Vector norm_ray, Point origin, int depth, float distance_from_eye) {
+vec3 light_trace(const Hit& p, vec3 norm_ray, vec3 origin, int depth, float distance_from_eye) {
   float distance_from_origin = p.closest_point_distance_from_viewer_ - sqrtf(ball_size2 - p.distance_from_object_center2_);
-  Point intersection = origin + norm_ray * distance_from_origin;
-  Vector distance_from_light_vector = intersection - light_pos;
+  vec3 intersection = origin + norm_ray * distance_from_origin;
+  vec3 distance_from_light_vector = intersection - light_pos;
 
-  Vector normal = distance_from_light_vector * light_inv_size;
+  vec3 normal = distance_from_light_vector * light_inv_size;
   float angle = -dot(norm_ray, normal);
   float total_distance = distance_from_eye + distance_from_origin;
 
   return light_color * (angle / (total_distance * total_distance));
 }
 
-class optional<Hit> pretrace_light(const Vector& norm_ray, const Vector& origin) {
-  Vector light_vector = light_pos - origin;
+class optional<Hit> pretrace_light(const vec3& norm_ray, const vec3& origin) {
+  vec3 light_vector = light_pos - origin;
   float light_distance2 = light_vector.size2();
 
   float closest_point_distance_from_origin = dot(norm_ray, light_vector);
@@ -226,21 +224,21 @@ std::vector<Ball> balls = {
 
 int max_internal_reflections = 30;
 
-Point trace_ball0_internal(const Vector& norm_ray, const Vector& origin, int depth, float distance_from_eye, int reflection) {
+vec3 trace_ball0_internal(const vec3& norm_ray, const vec3& origin, int depth, float distance_from_eye, int reflection) {
 //  assert(distance_from_eye < 10000 && distance_from_eye >= 0);
-  Vector ball_vector = balls[0].position_ - origin;
+  vec3 ball_vector = balls[0].position_ - origin;
   float closest_point_distance_from_viewer = dot(norm_ray, ball_vector);
   float ball_distance2 = ball_vector.size2();
 
   float distance_from_origin = 2 * closest_point_distance_from_viewer;
-  Point intersection = origin + norm_ray * distance_from_origin;
-  Vector distance_from_ball_vector = intersection - balls[0].position_;
-  Vector normal = distance_from_ball_vector * ball_inv_size;
+  vec3 intersection = origin + norm_ray * distance_from_origin;
+  vec3 distance_from_ball_vector = intersection - balls[0].position_;
+  vec3 normal = distance_from_ball_vector * ball_inv_size;
 
   if (FresnelReflectAmount(glass_refraction_index, 1, normal, norm_ray) > reflect_gen(gen)) {
-    return Point(0,0,0);
-    Vector ray_reflection = norm_ray + normal * (2 * dot(norm_ray, normal));
-    if (reflection <= 0) return Point();
+    return vec3(0,0,0);
+    vec3 ray_reflection = norm_ray + normal * (2 * dot(norm_ray, normal));
+    if (reflection <= 0) return vec3();
     return trace_ball0_internal(ray_reflection, origin, depth, distance_from_eye + distance_from_origin, --reflection);
   } else {
     // refract
@@ -248,24 +246,24 @@ Point trace_ball0_internal(const Vector& norm_ray, const Vector& origin, int dep
     normal = -normal;
     float eta = glass_refraction_index;
     float k = 1 - eta * eta * (1 - cosi * cosi);
-    Vector refracted_ray_norm = norm_ray * eta  + normal * (eta * cosi - sqrtf(k));
+    vec3 refracted_ray_norm = norm_ray * eta  + normal * (eta * cosi - sqrtf(k));
     auto res = trace(refracted_ray_norm, intersection, depth, distance_from_eye + distance_from_origin);
-    if (!res) return Vector(0,0,0);
+    if (!res) return vec3(0,0,0);
     return *res;
   }
 }
 
-Point ball_trace(const Hit& p, const Vector& norm_ray, const Vector& origin, int depth, float distance_from_eye) {
+vec3 ball_trace(const Hit& p, const vec3& norm_ray, const vec3& origin, int depth, float distance_from_eye) {
   float distance_from_origin = p.closest_point_distance_from_viewer_ - sqrtf(ball_size2 - p.distance_from_object_center2_);
-  Point intersection = origin + norm_ray * distance_from_origin;
+  vec3 intersection = origin + norm_ray * distance_from_origin;
 
   P(intersection);
-  Vector distance_from_ball_vector = intersection - p.ball_->position_;
+  vec3 distance_from_ball_vector = intersection - p.ball_->position_;
 
-  Vector normal = distance_from_ball_vector * ball_inv_size;
+  vec3 normal = distance_from_ball_vector * ball_inv_size;
 
   auto make_reflection = [&]() {
-    Vector ray_reflection = norm_ray - normal * (2 * dot(norm_ray, normal));
+    vec3 ray_reflection = norm_ray - normal * (2 * dot(norm_ray, normal));
     return compute_light(p.ball_->color_,
         normal,
         ray_reflection,
@@ -278,10 +276,10 @@ Point ball_trace(const Hit& p, const Vector& norm_ray, const Vector& origin, int
   auto make_refraction = [&]() {
     float cosi = -dot(normal, norm_ray);
     // FIXME: hack
-    if (cosi < 0) return Point();
+    if (cosi < 0) return vec3();
     float eta = 1.f/glass_refraction_index;
     float k = 1 - eta * eta * (1 - cosi * cosi);
-    Vector refracted_ray_norm = norm_ray * eta  + normal * (eta * cosi - sqrtf(k));
+    vec3 refracted_ray_norm = norm_ray * eta  + normal * (eta * cosi - sqrtf(k));
     return trace_ball0_internal(refracted_ray_norm, intersection, depth,
         distance_from_eye + distance_from_origin, max_internal_reflections);
   };
@@ -308,18 +306,18 @@ Point ball_trace(const Hit& p, const Vector& norm_ray, const Vector& origin, int
 
 struct RoomHit {
   float min_dist;
-  Vector normal;
-  Vector reflection;
-  Vector color;
+  vec3 normal;
+  vec3 reflection;
+  vec3 color;
 };
 
-RoomHit pretrace_room(const Vector& norm_ray, const Vector& point) {
-//  Point room_a(wall_x0, wall_y0, 0);
-//  Point room_b(wall_x1, wall_y1, ceiling_z);
-//  Point tMin = (room_a - point) / norm_ray;
-//  Point tMax = (room_b - point) / norm_ray;
-//  Point t1 = min(dist_a, dist_b);
-//  Point t2 = max(dist_a, dist_b);
+RoomHit pretrace_room(const vec3& norm_ray, const vec3& point) {
+//  vec3 room_a(wall_x0, wall_y0, 0);
+//  vec3 room_b(wall_x1, wall_y1, ceiling_z);
+//  vec3 tMin = (room_a - point) / norm_ray;
+//  vec3 tMax = (room_b - point) / norm_ray;
+//  vec3 t1 = min(dist_a, dist_b);
+//  vec3 t2 = max(dist_a, dist_b);
 //  float tNear = max(max(t1.x, t1.y), t1.z);
 //  float tFar = min(min(t2.x, t2.y), t2.z);
 
@@ -346,50 +344,50 @@ RoomHit pretrace_room(const Vector& norm_ray, const Vector& point) {
     // tracing floor
     dist_y = (wall_y0-point.y) / norm_ray.y;
   }
-  Vector normal;
-  Vector reflection;
+  vec3 normal;
+  vec3 reflection;
   float min_dist;
-  Vector color;
+  vec3 color;
   if (dist_y < dist_z) {
     color = wall_color;
     if (dist_x < dist_y) {
       min_dist = dist_x;
-      reflection = Vector(-norm_ray.x, norm_ray.y, norm_ray.z);
-      normal = Vector(std::copysign(1, reflection.x), 0, 0);
+      reflection = vec3(-norm_ray.x, norm_ray.y, norm_ray.z);
+      normal = vec3(std::copysign(1, reflection.x), 0, 0);
     } else {
       min_dist = dist_y;
-      reflection = Vector(norm_ray.x, -norm_ray.y, norm_ray.z);
-      normal = Vector(0, std::copysign(1, reflection.y), 0);
+      reflection = vec3(norm_ray.x, -norm_ray.y, norm_ray.z);
+      normal = vec3(0, std::copysign(1, reflection.y), 0);
     }
   } else {
     if (dist_x < dist_z) {
       min_dist = dist_x;
-      reflection = Vector(-norm_ray.x, norm_ray.y, norm_ray.z);
-      normal = Vector(std::copysign(1, reflection.x), 0, 0);
+      reflection = vec3(-norm_ray.x, norm_ray.y, norm_ray.z);
+      normal = vec3(std::copysign(1, reflection.x), 0, 0);
       color = wall_color;
     } else {
       min_dist = dist_z;
-      reflection = Vector(norm_ray.x, norm_ray.y, -norm_ray.z);
-      normal = Vector(0, 0, std::copysign(1, reflection.z));
+      reflection = vec3(norm_ray.x, norm_ray.y, -norm_ray.z);
+      normal = vec3(0, 0, std::copysign(1, reflection.z));
       color = std::signbit(reflection.z) ? ceiling_color : floor_color;
     }
   }
   return {min_dist, normal, reflection, color};
 }
 
-optional<Point> trace_room(const Vector& norm_ray, const Vector& point, int depth, float distance_from_eye) {
+optional<vec3> trace_room(const vec3& norm_ray, const vec3& point, int depth, float distance_from_eye) {
   RoomHit p = pretrace_room(norm_ray, point);
-  Point ray = norm_ray * p.min_dist;
-  Point intersection = point + ray;
+  vec3 ray = norm_ray * p.min_dist;
+  vec3 intersection = point + ray;
   // tiles
-  Vector color = p.color;
+  vec3 color = p.color;
   if (intersection.z < 0.01) {
-    color = ((int)(intersection.x + 10) % 2 == (int)(intersection.y + 10) % 2) ? Vector(0.1, 0.1, 0.1) : Vector(1,1,1);
+    color = ((int)(intersection.x + 10) % 2 == (int)(intersection.y + 10) % 2) ? vec3(0.1, 0.1, 0.1) : vec3(1,1,1);
   }
   return compute_light(color, p.normal, p.reflection, intersection, true, depth, distance_from_eye + p.min_dist);
 }
 
-optional<Point> trace(const Vector& norm_ray, const Vector& origin, int depth, float distance_from_eye) {
+optional<vec3> trace(const vec3& norm_ray, const vec3& origin, int depth, float distance_from_eye) {
   optional<Hit> tracer;
   for (const Ball& b : balls) {
     optional<Hit> t = b.pretrace(norm_ray, origin);
@@ -407,7 +405,7 @@ optional<Point> trace(const Vector& norm_ray, const Vector& origin, int depth, f
   return trace_room(norm_ray, origin, depth, distance_from_eye);
 }
 
-optional<float> distance(const Vector& norm_ray, const Vector& origin) {
+optional<float> distance(const vec3& norm_ray, const vec3& origin) {
   optional<Hit> ball_hit;
   for (const Ball& b : balls) {
     optional<Hit> another_ball_hit = b.pretrace(norm_ray, origin);
@@ -439,17 +437,17 @@ optional<float> distance(const Vector& norm_ray, const Vector& origin) {
   return rt.min_dist;
 }
 
-Point compute_light(
-    const Point& color,
-    const Point& normal,
-    const Point& reflection_in,
-    const Point& point,
+vec3 compute_light(
+    const vec3& color,
+    const vec3& normal,
+    const vec3& reflection_in,
+    const vec3& point,
     bool rought_surface,
     int depth,
     float distance_from_eye) {
-  Vector total_color = black;
+  vec3 total_color = black;
   if (depth > 0) {
-    Vector reflection = reflection_in;
+    vec3 reflection = reflection_in;
     if (rought_surface) {
       reflection = (reflection + distr()).normalize();
     }
@@ -462,8 +460,8 @@ Point compute_light(
     return total_color;
   }
 
-  Vector light_rnd_pos = light_pos + light_distr();
-  Vector light_from_point = light_rnd_pos - point;
+  vec3 light_rnd_pos = light_pos + light_distr();
+  vec3 light_from_point = light_rnd_pos - point;
   float angle_x_distance = dot(normal, light_from_point);
   if (angle_x_distance < 0) {
     return total_color;
@@ -471,7 +469,7 @@ Point compute_light(
   float light_distance2 = light_from_point.size2();
   float light_distance_inv = 1/sqrtf(light_distance2);
   float light_distance = 1/light_distance_inv;
-  Vector light_from_point_norm = light_from_point * light_distance_inv;
+  vec3 light_from_point_norm = light_from_point * light_distance_inv;
 
   for (auto b : balls) {
     auto res = b.pretrace(light_from_point_norm, point);
@@ -485,44 +483,44 @@ Point compute_light(
 
   float angle = angle_x_distance * light_distance_inv;
   float total_distance = light_distance + distance_from_eye;
-  Vector defuse_color = (color * light_color) * (angle / (total_distance * total_distance) * defuse_attenuation);
+  vec3 defuse_color = (color * light_color) * (angle / (total_distance * total_distance) * defuse_attenuation);
   total_color += defuse_color;
   return total_color;
 }
 
 
-Vector sight = Vector(0., 1, -0.1).normalize();
-Vector sight_x, sight_y;
+vec3 sight = vec3(0., 1, -0.1).normalize();
+vec3 sight_x, sight_y;
 
 // Sort objects by distance / obstraction possibility
 Uint8 colorToInt(float c) {
   if (c > 1) return 255;
   return sqrtf(c) * 255;
 }
-Vector saturateColor(Point c) {
+vec3 saturateColor(vec3 c) {
   float m = std::max(c.x, c.y);
   if (m < 1) {
     return c;
   }
   float total = c.x + c.y + c.z;
   if (total > 3) {
-    return Vector(1,1,1);
+    return vec3(1,1,1);
   }
   float scale = (3 - total) / (3 * m - total);
   float grey = 1 - scale * m;
-  return Vector(grey + scale * c.x,
+  return vec3(grey + scale * c.x,
                 grey + scale * c.y,
                 grey + scale * c.z);
 }
 
 
 void check_saturation() {
-  auto s = saturateColor(Vector(2, 0.1, 0));
+  auto s = saturateColor(vec3(2, 0.1, 0));
   P(s);
-  assert(s.sum() == Vector(1, 0.6, 0.5).sum());
+  assert(s.sum() == vec3(1, 0.6, 0.5).sum());
 }
 
-Point viewer = Point(0, -5.5, 1.5);
+vec3 viewer = vec3(0, -5.5, 1.5);
 
 std::vector<std::thread> threads;
 std::mutex m;
@@ -535,12 +533,12 @@ BasePoint<double>* fppixels;
 Uint8* pixels;
 
 void set_focus_distance(float x, float y) {
-  Vector yoffset = sight_y * (float)(window_height / 2);
-  Vector xoffset = sight_x * (float)(window_width / 2);
+  vec3 yoffset = sight_y * (float)(window_height / 2);
+  vec3 xoffset = sight_x * (float)(window_width / 2);
 
-  Vector ray = sight - yoffset - xoffset + sight_y * y + sight_x * x;
+  vec3 ray = sight - yoffset - xoffset + sight_y * y + sight_x * x;
   P(ray);
-  Vector norm_ray = ray.normalize();
+  vec3 norm_ray = ray.normalize();
   P(norm_ray);
   auto res = distance(norm_ray, viewer);
   if (res) {
@@ -549,8 +547,8 @@ void set_focus_distance(float x, float y) {
 }
 
 void drawThread(int id) {
-  Vector yoffset = sight_y * (float)(window_height / 2);
-  Vector xoffset = sight_x * (float)(window_width / 2);
+  vec3 yoffset = sight_y * (float)(window_height / 2);
+  vec3 xoffset = sight_x * (float)(window_width / 2);
   Uint8* my_pixels = pixels;
   BasePoint<double>* my_fppixels = fppixels;
   int num_frames = frame - base_frame;
@@ -559,15 +557,15 @@ void drawThread(int id) {
   }
   double one_mul = 1. / num_frames;
 
-  Vector yray = sight - yoffset - xoffset;
+  vec3 yray = sight - yoffset - xoffset;
   for (int y = 0; y < window_height; y++) {
     if (y % numCPU == id) {
-      Vector ray = yray;
+      vec3 ray = yray;
       for (int x = 0; x < window_width; x++) {
-        Vector focused_ray = (ray + sight_x * antialiasing(gen) + sight_y * antialiasing(gen)).normalize();
-        Vector focused_point = viewer + focused_ray * focused_distance;
-        Vector me = viewer + sight_x.normalize() * (float)lense_gen(gen) + sight_y.normalize() * (float)lense_gen(gen);
-        Vector new_ray = (focused_point - me).normalize();
+        vec3 focused_ray = (ray + sight_x * antialiasing(gen) + sight_y * antialiasing(gen)).normalize();
+        vec3 focused_point = viewer + focused_ray * focused_distance;
+        vec3 me = viewer + sight_x.normalize() * (float)lense_gen(gen) + sight_y.normalize() * (float)lense_gen(gen);
+        vec3 new_ray = (focused_point - me).normalize();
 
         trace_values = x == 500 && y == 500;
         auto res = trace(new_ray, me, max_depth, 0);
@@ -576,7 +574,7 @@ void drawThread(int id) {
         res = BasePoint<float>::convert(*my_fppixels++ * one_mul);
 
         if (res) {
-          Vector saturated = saturateColor(*res);
+          vec3 saturated = saturateColor(*res);
           *my_pixels++ = colorToInt(saturated.x);
           *my_pixels++ = colorToInt(saturated.y);
           *my_pixels++ = colorToInt(saturated.z);
@@ -643,7 +641,7 @@ void reset_accumulate() {
 
 void update_viewpoint() {
   float dx = 1.9 / window_width;
-  sight_x = cross(sight, Vector(0,0,1)).normalize();
+  sight_x = cross(sight, vec3(0,0,1)).normalize();
   sight_y = cross(sight, sight_x);
   sight_x *= dx;
   sight_y *= dx;
@@ -684,7 +682,7 @@ int main(void) {
     int mouse_x_before_rel = 0;
     int mouse_y_before_rel = 0;
 
-    auto apply_motion = [](Vector dir, optional<Uint32>* prev_ts, Uint32 ts) {
+    auto apply_motion = [](vec3 dir, optional<Uint32>* prev_ts, Uint32 ts) {
       if (*prev_ts == nullopt) {
         return;
       }
@@ -739,8 +737,8 @@ int main(void) {
                          break;
           case SDL_MOUSEMOTION:
                          if (event.motion.state == SDL_BUTTON_RMASK) {
-                           Vector x = cross(sight, Vector(0.f,0.f,1.f)).normalize();
-                           Vector y = cross(sight, x).normalize();
+                           vec3 x = cross(sight, vec3(0.f,0.f,1.f)).normalize();
+                           vec3 y = cross(sight, x).normalize();
                            sight = (cross(sight, y) * (-0.001f * event.motion.xrel) + sight).normalize();
                            sight = (cross(sight, x) * (0.001f * event.motion.yrel) + sight).normalize();
                            update_viewpoint();
