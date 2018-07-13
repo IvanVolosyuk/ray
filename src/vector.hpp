@@ -19,6 +19,7 @@ class BasePoint {
     T x, y, z;
     static const constexpr T w = 1;
     inline BasePoint() { x = y = z = 0; }
+    inline explicit BasePoint(T v) { x = y = z = v; }
 
     inline BasePoint(const BasePoint<T>& v);
 
@@ -35,7 +36,6 @@ class BasePoint {
     inline bool operator != (const BasePoint& v) const;
     inline T size() const;
     inline T size2() const;
-    inline BasePoint normalize() const;
     inline float sum() const;
 
     template<class Y>
@@ -185,10 +185,10 @@ inline T BasePoint<T>::size() const {
 }
 
 template<class T>
-inline BasePoint<T> BasePoint<T>::normalize() const {
-    T sz = size();
-    sz = w/sz;
-    BasePoint<T> res(x * sz, y * sz, z * sz);
+inline BasePoint<T> normalize(BasePoint<T> v) {
+    T sz = v.size();
+    sz = BasePoint<T>::w/sz;
+    BasePoint<T> res(v.x * sz, v.y * sz, v.z * sz);
     return res;
 }
 

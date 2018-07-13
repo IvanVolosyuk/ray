@@ -63,11 +63,13 @@ void make_shader_map(const string& shader) {
 
 string reformat_errors(const string& input) {
   std::stringstream out;
-  auto linenum = std::regex(R"(.*[0-9]+\(([0-9]+)\)( *: .*))");
+  auto linenum_mesa = std::regex(R"([0-9]+:([0-9]+)\([0-9]+\)(: .*))");
+  auto linenum_nvidia = std::regex(R"(.*[0-9]+\(([0-9]+)\)( *: .*))");
+
 
   for (const auto& line : split(input, '\n')) {
     std::smatch m;
-    if (std::regex_match (line, m, linenum)) {
+    auto fix = [&]() {
       int err_line = std::stoi(m[1].str()) - 1;
       auto lookup = --line_map.upper_bound(err_line);
       if (lookup != line_map.begin()) {
@@ -80,6 +82,12 @@ string reformat_errors(const string& input) {
       } else {
         out << "Unmatched: " << err_line << " >> " << line << endl;
       }
+    };
+
+    if (std::regex_match (line, m, linenum_mesa)) {
+      fix();
+    } else if(std::regex_match (line, m, linenum_nvidia)) {
+      fix();
     } else {
       out << line << endl;
     }

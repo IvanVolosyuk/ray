@@ -24,13 +24,16 @@ gl_renderer.o: gl_renderer.hpp vector.hpp
 ray.o: gl_renderer.hpp vector.hpp
 
 %.pp : %.h
-	gcc -E $< > $@
+	gcc -DUSE_HW -E $< > $@
 
-main.pp: main.h recursion.h stages.h
+main.pp: main.h recursion.h stages.h shader.h software.h common.h
 
-shader.comp: main.pp
+shader.comp.in: main.pp
+	sed  's/#/\/\/ GENERATED DONT EDIT/' $< > $@
+
+shader.comp: shader.comp.in
 	echo '#version 430' >$@
-	sed  's/#/\/\/ GENERATED DONT EDIT/' $< >> $@
+	cat $< >> $@
 
 clean:
 	$(RM) ray $(OBJ) shader.comp 

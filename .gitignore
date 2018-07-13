@@ -1,0 +1,6 @@
+ray
+*.o
+main.pp
+shader.comp
+shader.comp.in
+.ycm_extra_conf.py

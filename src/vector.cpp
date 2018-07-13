@@ -86,7 +86,7 @@ Matrix::rotate(GLfloat grad, Point& v) {
     GLfloat SIN = sin(rad);
 
     Matrix res(Matrix::identity());
-    Point u(v); u.normalize();
+    Point u(v); u = normalize(u);
 
 #define F(k,x,y) u.x*u.y + COS*(k-u.x*u.y)
     res(1,1) = F(1,x,x);

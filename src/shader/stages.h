@@ -1,3 +1,5 @@
+#define COMPILE_RECURSION
+
 #define CURR(n) n ## _0
 #include "recursion.h"
 #undef CURR
