@@ -68,14 +68,14 @@ float ball_size2 = ball_size * ball_size;
 float ball_inv_size = 1 / ball_size;
 std::vector<Ball> balls = {
   {vec3 (-1, -2, ball_size * 1.0f), vec3(1, 1, 1)},
-  {vec3 (-2 * ball_size, 0, ball_size), vec3(0.01, 1.0, 0.01)},
-  { vec3 (2 * ball_size, 0, ball_size), vec3(1.00, 0.00, 1.)},
+  {vec3 (-2 * ball_size, 0, ball_size), vec3(0.20, 1.0, 0.2)},
+  { vec3 (2 * ball_size, 0, ball_size), vec3(1.00, 0.20, 0.8)},
 };
 
 vec3 floor_color = vec3 (0.14, 1.0, 0.14);
 vec3 wall_color = vec3 (0.85, 0.8, 0.48);
 vec3 ceiling_color = vec3 (0.98, 0.98, 0.98);
-float defuse_attenuation = 0.4;
+float diffuse_attenuation = 0.9;
 
 int max_depth = 2;
 
@@ -83,12 +83,12 @@ std::random_device rd;
 std::mt19937 gen(rd());
 float focused_distance = 3.1;
 float lense_blur = 0.01;
-std::normal_distribution<float> lense_gen{-lense_blur,lense_blur};
+std::normal_distribution<float> lense_gen{0,lense_blur};
 std::uniform_real_distribution<float> reflect_gen{0.f, 1.f};
 
-std::normal_distribution<float> wall_gen{-0.8,0.8};
-std::normal_distribution<float> light_gen{light_size, light_size};
-std::normal_distribution<float> antialiasing{-0.5,0.5};
+std::normal_distribution<float> wall_gen{0,0.5};
+std::normal_distribution<float> light_gen{0, light_size};
+std::normal_distribution<float> antialiasing{0,0.5};
 
 float room_size = 6;
 float ceiling_z = room_size;
@@ -377,7 +377,8 @@ vec3 trace_room(const vec3 norm_ray, const vec3 point, int depth, float distance
   if (intersection.z < 0.01) {
     color = ((int)(intersection.x + 10) % 2 == (int)(intersection.y + 10) % 2) ? vec3(0.1, 0.1, 0.1) : vec3(1,1,1);
   }
-  return compute_light(color, p.normal, p.reflection, intersection, true, depth, distance_from_eye + p.min_dist);
+  return compute_light(color, p.normal, p.reflection, intersection,
+      true, depth, distance_from_eye + p.min_dist);
 }
 
 vec3 trace(const vec3 norm_ray, const vec3 origin, int depth, float distance_from_eye) {
@@ -440,7 +441,7 @@ vec3 compute_light(
       reflection = (reflection + distr()).normalize();
     }
     vec3 second_ray = trace(reflection, point, depth - 1, distance_from_eye);
-    total_color = color * second_ray * defuse_attenuation;
+    total_color = color * second_ray * diffuse_attenuation;
   }
   if (!rought_surface) {
     return total_color;
@@ -467,7 +468,7 @@ vec3 compute_light(
 
   float angle = angle_x_distance * light_distance_inv;
   float total_distance = light_distance + distance_from_eye;
-  vec3 defuse_color = (color * light_color) * (angle / (total_distance * total_distance) * defuse_attenuation);
+  vec3 defuse_color = (color * light_color) * (angle / (total_distance * total_distance) * diffuse_attenuation);
   total_color += defuse_color;
   return total_color;
 }
@@ -771,15 +772,15 @@ int main(void) {
                              if (event.key.state != SDL_PRESSED) reset_accumulate();
                              break;
                            case SDL_SCANCODE_7:
-                             wall_gen = std::normal_distribution<float>{-0.00,0.00};
+                             wall_gen = std::normal_distribution<float>{0.0,0.00};
                              if (event.key.state != SDL_PRESSED) reset_accumulate();
                              break;
                            case SDL_SCANCODE_8:
-                             wall_gen = std::normal_distribution<float>{-0.03,0.03};
+                             wall_gen = std::normal_distribution<float>{0.0,0.20};
                              if (event.key.state != SDL_PRESSED) reset_accumulate();
                              break;
                            case SDL_SCANCODE_9:
-                             wall_gen = std::normal_distribution<float>{-0.8,0.8};
+                             wall_gen = std::normal_distribution<float>{0.,0.4};
                              if (event.key.state != SDL_PRESSED) reset_accumulate();
                              break;
                            case SDL_SCANCODE_MINUS:
@@ -795,7 +796,7 @@ int main(void) {
                              light_size = 0.9;
                              light_size2 = light_size * light_size;
                              light_inv_size = 1 / light_size;
-                             light_gen = std::normal_distribution<float>{light_size, light_size};
+                             light_gen = std::normal_distribution<float>{0, light_size};
                              if (event.key.state != SDL_PRESSED) reset_accumulate();
                              break;
                            case SDL_SCANCODE_LEFTBRACKET:
@@ -803,13 +804,22 @@ int main(void) {
                              if (lense_blur == 0) {
                                printf("No blur\n");
                              }
-                             lense_gen = std::normal_distribution<float>{-lense_blur,lense_blur};
+                             lense_gen = std::normal_distribution<float>{0,lense_blur};
                              if (event.key.state != SDL_PRESSED) reset_accumulate();
                              break;
 
                            case SDL_SCANCODE_RIGHTBRACKET:
                              lense_blur = lense_blur * 1.2f + .0001f;
-                             lense_gen = std::normal_distribution<float>{-lense_blur,lense_blur};
+                             lense_gen = std::normal_distribution<float>{0,lense_blur};
+                             if (event.key.state != SDL_PRESSED) reset_accumulate();
+                             break;
+                           case SDL_SCANCODE_O:
+                             diffuse_attenuation = 0.5;
+                             if (event.key.state != SDL_PRESSED) reset_accumulate();
+                             break;
+
+                           case SDL_SCANCODE_P:
+                             diffuse_attenuation = 0.9;
                              if (event.key.state != SDL_PRESSED) reset_accumulate();
                              break;
                            case SDL_SCANCODE_F:
