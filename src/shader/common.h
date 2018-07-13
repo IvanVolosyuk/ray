@@ -108,12 +108,12 @@ float reflect_gen(in vec3 point) {
 std::random_device rd;
 std::mt19937 gen(rd());
 float lense_blur = 0.01;
-std::normal_distribution<float> lense_gen{0,lense_blur};
+std::uniform_real_distribution<float> lense_gen{-lense_blur,lense_blur};
 std::uniform_real_distribution<float> reflect_gen{0.f, 1.f};
 
 std::normal_distribution<float> wall_gen{0,0.5};
-std::normal_distribution<float> light_gen{0, light_size};
-std::normal_distribution<float> antialiasing{0,0.5};
+std::uniform_real_distribution<float> light_gen{-light_size, light_size};
+std::uniform_real_distribution<float> antialiasing{-0.5,0.5};
 vec3 wall_distr() {
     return vec3(wall_gen(gen), wall_gen(gen), wall_gen(gen));
 }

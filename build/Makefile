@@ -21,7 +21,7 @@ vector.o: vector.hpp
 
 gl_renderer.o: gl_renderer.hpp vector.hpp renderer.hpp
 
-sw_renderer.o: sw_renderer.hpp renderer.hpp
+sw_renderer.o: sw_renderer.hpp renderer.hpp common.h shader.h software.h recursion.h stages.h
 
 ray.o: gl_renderer.hpp vector.hpp
 
