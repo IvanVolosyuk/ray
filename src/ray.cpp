@@ -79,6 +79,7 @@ float diffuse_attenuation = 0.9;
 int max_depth = 2;
 
 std::random_device rd;
+
 std::mt19937 gen(rd());
 float focused_distance = 3.1;
 float lense_blur = 0.01;
@@ -147,12 +148,6 @@ void print(const char* msg, float v) {
 void print(const char*, const char* v) {
   if (trace_values)
     printf("%s\n", v);
-}
-
-void assert_norm(const vec3 v) {
-  float s = v.size();
-  assert(s > 0.99);
-  assert(s < 1.01);
 }
 
 // GLUE Code
@@ -227,7 +222,7 @@ vec3 light_trace(const Hit& p, vec3 norm_ray, vec3 origin, int depth, float dist
   return light_color * (angle / (total_distance * total_distance));
 }
 
-class Hit light_hit(const vec3 norm_ray, const vec3 origin) {
+Hit light_hit(const vec3 norm_ray, const vec3 origin) {
   vec3 light_vector = light_pos - origin;
   float light_distance2 = light_vector.size2();
 
@@ -249,7 +244,6 @@ vec3 trace_ball0_internal(vec3 norm_ray, vec3 origin, int depth, float distance_
   for (int i = 0; i < max_internal_reflections; i++) {
     vec3 ball_vector = balls[0].position_ - origin;
     float closest_point_distance_from_viewer = dot(norm_ray, ball_vector);
-    float ball_distance2 = ball_vector.size2();
 
     float distance_from_origin = 2 * closest_point_distance_from_viewer;
     vec3 intersection = origin + norm_ray * distance_from_origin;
@@ -329,10 +323,10 @@ vec3 ball_trace(const Hit p, const vec3 norm_ray, const vec3 origin, int depth, 
 RoomHit room_hit(const vec3 norm_ray, const vec3 origin) {
   vec3 tMin = (room.a_ - origin) / norm_ray;
   vec3 tMax = (room.b_ - origin) / norm_ray;
-  vec3 t1 = min(tMin, tMax);
+//  vec3 t1 = min(tMin, tMax);
   vec3 t2 = max(tMin, tMax);
 //  float tNear = max(max(t1.x, t1.y), t1.z);
-  float tFar = min(min(t2.x, t2.y), t2.z);
+//  float tFar = min(min(t2.x, t2.y), t2.z);
 
   vec3 normal;
   vec3 reflection;
@@ -381,7 +375,7 @@ vec3 trace_room(const vec3 norm_ray, const vec3 point, int depth, float distance
 
 vec3 trace(const vec3 norm_ray, const vec3 origin, int depth, float distance_from_eye) {
   Hit hit = no_hit;
-  for (int i = 0; i < balls.size(); i++) {
+  for (size_t i = 0; i < balls.size(); i++) {
     Hit other_hit = ball_hit(i, norm_ray, origin);
     if (other_hit.closest_point_distance_from_viewer_ < hit.closest_point_distance_from_viewer_) {
       hit = other_hit;
@@ -399,7 +393,7 @@ vec3 trace(const vec3 norm_ray, const vec3 origin, int depth, float distance_fro
 
 float distance(const vec3 norm_ray, const vec3 origin) {
   Hit hit = no_hit;
-  for (int i = 0; i < balls.size(); i++) {
+  for (size_t i = 0; i < balls.size(); i++) {
     Hit another_hit = ball_hit(i, norm_ray, origin);
     if (another_hit.closest_point_distance_from_viewer_
            < hit.closest_point_distance_from_viewer_) {
@@ -456,7 +450,7 @@ vec3 compute_light(
   float light_distance = 1/light_distance_inv;
   vec3 light_from_point_norm = light_from_point * light_distance_inv;
 
-  for (int i = 0; i < balls.size(); i++) {
+  for (size_t i = 0; i < balls.size(); i++) {
     Hit hit = ball_hit(i, light_from_point_norm, point);
     if (hit.closest_point_distance_from_viewer_ < light_distance) {
       // Obstracted
@@ -670,8 +664,6 @@ int main(void) {
 
     bool relative_motion = false;
     update_viewpoint();
-    int mouse_x_before_rel = 0;
-    int mouse_y_before_rel = 0;
 
     auto apply_motion = [](vec3 dir, Uint32* prev_ts, Uint32 ts) {
       if (*prev_ts == 0) {
@@ -701,9 +693,6 @@ int main(void) {
           case SDL_MOUSEBUTTONUP:
                          if (event.button.button == SDL_BUTTON_RIGHT) {
                            SDL_SetRelativeMouseMode(SDL_FALSE);
-//                           SDL_WarpMouseInWindow(window,
-//                               mouse_x_before_rel,
-//                               mouse_y_before_rel);
                            relative_motion = false;
                          }
                          break;
@@ -712,8 +701,6 @@ int main(void) {
                            SDL_SetRelativeMouseMode(SDL_TRUE);
                            SDL_SetWindowGrab(window, SDL_TRUE);
                            relative_motion = true;
-                           mouse_x_before_rel = event.button.x;
-                           mouse_y_before_rel = event.button.y;
                          }
                          if (event.button.button == SDL_BUTTON_LEFT) {
                            if (relative_motion) {
@@ -863,6 +850,9 @@ int main(void) {
                            case SDL_SCANCODE_Z:
                              if (event.key.state != SDL_PRESSED)
                                SDL_SetWindowGrab(window, SDL_FALSE);
+                           default:
+                             // ignore
+                             {}
                          }
         }
       }

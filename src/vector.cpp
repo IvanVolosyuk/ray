@@ -196,7 +196,7 @@ Matrix::invert() {
     assert(determ != 0);
     for(int x = 0; x < 4; x++)
     for(int y = 0; y < 4; y++)
-        res(y+1,x+1) = (x + y & 1 ? -1 : 1) * Minor(*this, y, x) / determ;
+        res(y+1,x+1) = ((x + y) & 1 ? -1 : 1) * Minor(*this, y, x) / determ;
 
     return *this = res;
 }

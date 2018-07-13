@@ -47,8 +47,6 @@ using vec3 = Point;
 
 
 class Matrix;
-static inline void glMultMatrix(const Matrix& m);
-static inline void glLoadMatrix(const Matrix& m);
 
 class Matrix2 {
     GLfloat data[16];

@@ -48,8 +48,8 @@ std::map<int, std::pair<int, std::string>> line_map;
 void make_shader_map(const string& shader) {
   line_map.clear();
   auto lines = split(shader, '\n');
-  auto marker = std::regex(R"regexp(// GENERATED DONT EDIT (.*) "(.*)")regexp");
-  for (int i = 0; i < lines.size(); i++) {
+  std::regex marker(R"regexp(// GENERATED DONT EDIT (.*) "(.*)")regexp");
+  for (size_t i = 0; i < lines.size(); i++) {
     const string& line = lines[i];
     std::smatch m;
     if (std::regex_match (line, m, marker)) {
@@ -264,17 +264,17 @@ bool OpenglRenderer::setup() {
 
   viewer_location = glGetUniformLocation(ray_program, "viewer");
   if (viewer_location == -1) {
-    std::cerr << "Viewer location undefined: " << SDL_GetError() << std::endl;
+    std::cerr << "Viewer location undefined: " << SDL_GetError() << endl;
     return false;
   }
   sight_location = glGetUniformLocation(ray_program, "sight");
   if (sight_location == -1) {
-    std::cerr << "Sight location undefined: " << SDL_GetError() << std::endl;
+    std::cerr << "Sight location undefined: " << SDL_GetError() << endl;
     return false;
   }
   focused_distance_location = glGetUniformLocation(ray_program, "focused_distance");
   if (focused_distance_location == -1) {
-    std::cerr << "Focused distance location undefined: " << SDL_GetError() << std::endl;
+    std::cerr << "Focused distance location undefined: " << SDL_GetError() << endl;
     return false;
   }
   return true;
@@ -313,6 +313,7 @@ std::unique_ptr<OpenglRenderer> OpenglRenderer::Create(int window_width, int win
     std::cerr << "Problem with OpenGL:" << SDL_GetError() << std::endl;
     return nullptr;
   }
+  std::cerr << "OpenGL version: " << version << endl;
 
   int res = SDL_GL_MakeCurrent(r->window_, r->context_);
   if (res != 0) {
@@ -323,7 +324,7 @@ std::unique_ptr<OpenglRenderer> OpenglRenderer::Create(int window_width, int win
   if (!r->setup()) {
     return nullptr;
   }
-  return std::move(r);
+  return r;
 }
 
 
