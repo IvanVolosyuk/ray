@@ -4,7 +4,7 @@ PROF_USE=-fprofile-use
 LDFLAGS=-L/usr/local/X11R6/lib -lGL -lglut -lSDL2 -lpthread $(PROF_USE)
 CFLAGS+=-I../src -ggdb
 CXXFLAGS+=-I../src -ggdb -I/usr/include/SDL2 -std=c++17 -O3 -Wall $(PROF_USE)
-OBJ=vector.o ray.o gl_renderer.o
+OBJ=vector.o ray.o gl_renderer.o sw_renderer.o
 
 vpath %.cpp ../src
 vpath %.hpp ../src
@@ -19,7 +19,9 @@ ray: $(OBJ)
 
 vector.o: vector.hpp
 
-gl_renderer.o: gl_renderer.hpp vector.hpp
+gl_renderer.o: gl_renderer.hpp vector.hpp renderer.hpp
+
+sw_renderer.o: sw_renderer.hpp renderer.hpp
 
 ray.o: gl_renderer.hpp vector.hpp
 

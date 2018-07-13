@@ -288,7 +288,7 @@ bool OpenglRenderer::setup() {
   return true;
 }
 
-std::unique_ptr<OpenglRenderer> OpenglRenderer::Create(int window_width, int window_height) {
+std::unique_ptr<Renderer> OpenglRenderer::Create(int window_width, int window_height) {
   SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, OPENGL_PROFILE);
   SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, OPENGL_MAJOR_VERSION);
   SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, OPENGL_MINOR_VERSION);
@@ -332,16 +332,18 @@ std::unique_ptr<OpenglRenderer> OpenglRenderer::Create(int window_width, int win
   if (!r->setup()) {
     return nullptr;
   }
+  std::cerr << "Created OpenGL renderer\n";
   return r;
 }
 
 
-void OpenglRenderer::draw(vec3 viewer, vec3 sight, float focused_distance) {
+void OpenglRenderer::draw() {
 
   glUseProgram( ray_program );
-  glUniform3f(viewer_location, viewer.x, viewer.y, viewer.z);
-  glUniform3f(sight_location, sight.x, sight.y, sight.z);
-  glUniform1f(focused_distance_location, focused_distance);
+  // FIXME
+//  glUniform3f(viewer_location, viewer.x, viewer.y, viewer.z);
+//  glUniform3f(sight_location, sight.x, sight.y, sight.z);
+//  glUniform1f(focused_distance_location, focused_distance);
 
   // launch compute shaders!
   glDispatchCompute(width_, height_, 1 );

@@ -4,21 +4,21 @@
 #define GL_GLEXT_PROTOTYPES 1
 #include <GL/glcorearb.h>
 
-#include <SDL2/SDL.h>
 #include <SDL2/SDL_opengl.h>
 
-class OpenglRenderer {
+#include "renderer.hpp"
+
+class OpenglRenderer : public Renderer {
   OpenglRenderer() = default;
   public:
-  ~OpenglRenderer();
+  ~OpenglRenderer() override;
 
-  static std::unique_ptr<OpenglRenderer> Create(
+  static std::unique_ptr<Renderer> Create(
       int window_width, int window_height);
   bool setup();
-  void draw(vec3 viewer, vec3 sight, float focused_distance);
+  void draw() override;
 
   private:
-  SDL_Window *window_ = nullptr;
   SDL_GLContext context_ = nullptr;
   int width_;
   int height_;
