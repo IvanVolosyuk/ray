@@ -1,6 +1,7 @@
 #ifndef __RENDERER_H__
 #define __RENDERER_H__
 
+#include <GL/glew.h>
 #include <SDL2/SDL.h>
 
 class Renderer {

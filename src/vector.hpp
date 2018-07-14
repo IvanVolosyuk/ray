@@ -9,8 +9,8 @@
 # define M_PI 3.14159265358979323846  /* pi */
 #endif
 
-#define GL_GLEXT_PROTOTYPES 1
-#include <GL/glcorearb.h>
+#include <GL/glew.h>
+#include <SDL2/SDL_opengl.h>
 
 template<class T>
 class BasePoint {

@@ -2,10 +2,9 @@
 
 #include <memory>
 #include <vector>
-#define GL_GLEXT_PROTOTYPES 1
-#include <GL/glcorearb.h>
-
 #include <SDL2/SDL_opengl.h>
+#include <GL/glew.h>
+
 
 #include "renderer.hpp"
 

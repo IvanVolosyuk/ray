@@ -12,6 +12,7 @@
 #include "sw_renderer.hpp"
 #include "vector.hpp"
 #include "shader/input.h"
+#include <SDL2/SDL_main.h>
 
 using namespace std::placeholders;
 

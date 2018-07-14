@@ -32,7 +32,7 @@ std::unique_ptr<Renderer> SoftwareRenderer::Create(int window_width, int window_
     r->numCPU_ = atoi(cpus);
   }
   if (r->numCPU_ == 0) {
-    r->numCPU_ = sysconf(_SC_NPROCESSORS_ONLN);
+    r->numCPU_ = 4; //sysconf(_SC_NPROCESSORS_ONLN);
   }
   printf("Num CPUs: %d\n", r->numCPU_);
 
