@@ -12,6 +12,8 @@
 #include "sw_renderer.hpp"
 #include "vector.hpp"
 #include "shader/input.h"
+
+#include <SDL2/SDL.h>
 #include <SDL2/SDL_main.h>
 
 using namespace std::placeholders;
@@ -43,7 +45,7 @@ void update_viewpoint() {
   sight_y = cross(sight, sight_x);
 }
 
-int main(void) {
+int main(int argc, char** argv) {
     SDL_Event event;
 
     if (SDL_Init( SDL_INIT_VIDEO) < 0) {

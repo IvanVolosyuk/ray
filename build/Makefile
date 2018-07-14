@@ -1,10 +1,10 @@
 PROF=-ggdb -pg -no-pie
 PROF_GEN=-fprofile-generate
 PROF_USE=-fprofile-use
-LDFLAGS=-L/usr/local/X11R6/lib -Lc:\msys64\mingw64\lib -L/c/cygwin/home/Ivan/1/SDL2-2.0.8/x86_64-w64-mingw32/lib -lSDL2main -lSDL2 -lopengl32 -lglew32 -lpthread $(PROF_USE)
+LDFLAGS=-L. -L/usr/lib/w32api -lmingw32 -lSDL2main -lSDL2 -L/c/cygwin/home/Ivan/1/SDL2-2.0.8/x86_64-w64-mingw32/lib -lglew32 -lopengl32
 CFLAGS+=-I../src -ggdb
-CXXFLAGS+=-I../src -ggdb -I/usr/include/SDL2 -std=c++17 -O3 -Wall $(PROF_USE) -Ic:\MinGW-w64\mingw64\include -Ic:\msys64\mingw64\include
-OBJ=vector.o ray.o gl_renderer.o sw_renderer.o
+CXXFLAGS+=-I../src -ggdb -I/usr/include/SDL2 -std=c++17 -O3 -Wall -Ic:\MinGW-w64\mingw64\include -Ic:\msys64\mingw64\include
+OBJ=vector.o ray.o sw_renderer.o gl_renderer.o
 
 vpath %.cpp ../src
 vpath %.hpp ../src
@@ -12,7 +12,7 @@ vpath %.h ../src/shader
 .PHONY: all
 .PHONY: clean
 
-all: ray
+all: ray shader_comp
 
 ray: $(OBJ)
 	$(CXX) -o $@ $(OBJ) $(LDFLAGS)
