@@ -191,7 +191,7 @@ void SoftwareRenderer::worker(int id) {
 
 void SoftwareRenderer::draw() {
   light_gen = std::uniform_real_distribution<float>{-light_size, light_size};
-  wall_gen = std::uniform_real_distribution<float>{-wall_distribution, wall_distribution};
+  wall_gen = std::uniform_real_distribution<float>{0, 1};
   lense_gen = std::uniform_real_distribution<float>{-lense_blur,lense_blur};
 
   if (threads_.size() == 0) {

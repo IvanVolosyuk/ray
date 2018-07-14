@@ -84,11 +84,16 @@ vec3 wall_distr(in vec3 pos) {
       srand(pos.z) * wall_distribution);
 }
 
+float uniform_rand(float entroy) {
+  float x = rand(entropy);
+  return return 1/x + 1/(x-1);
+}
+
 vec3 light_distr(in vec3 point) {
   return vec3(
-      srand(point.z) * light_size,
-      srand(point.x) * light_size,
-      srand(point.y) * light_size);
+      uniform_rand(point.z) * light_size,
+      uniform_rand(point.x) * light_size,
+      uniform_rand(point.y) * light_size);
 }
 
 float lense_gen(in float a) {
@@ -109,12 +114,17 @@ std::mt19937 gen(rd());
 std::uniform_real_distribution<float> lense_gen{-lense_blur,lense_blur};
 std::uniform_real_distribution<float> reflect_gen{0.f, 1.f};
 
-std::uniform_real_distribution<float> wall_gen{-0.5, 0.5};
+std::uniform_real_distribution<float> wall_gen{0, 1};
 std::uniform_real_distribution<float> light_gen{-light_size, light_size};
 std::uniform_real_distribution<float> antialiasing{-0.5,0.5};
 vec3 wall_distr() {
-    return vec3(wall_gen(gen), wall_gen(gen), wall_gen(gen));
+  auto d = [](float x) { return 1/x + 1/(x-1); };
+  return vec3(
+      d(wall_gen(gen)) * wall_distribution,
+      d(wall_gen(gen)) * wall_distribution,
+      d(wall_gen(gen))* wall_distribution);
 }
+
 
 vec3 light_distr() {
     return vec3(light_gen(gen), light_gen(gen), light_gen(gen));
