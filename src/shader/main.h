@@ -15,6 +15,7 @@ float seed = PI;
 
 void main () {
   ivec2 pixel_coords = ivec2 (gl_GlobalInvocationID.xy);
+  pixel_coords.x *= x_batch;
   ivec2 dims = imageSize (img_output);
 
   float x = (float(pixel_coords.x * 2 - dims.x) / dims.x);
@@ -29,31 +30,33 @@ void main () {
   vec3 ray = sight + xoffset * x + yoffset * y ;
   vec3 origin = viewer;
 
-  vec3 pixel = vec3(0);
-  if (frame_num != 0) {
-    pixel = vec3(imageLoad (img_output, pixel_coords));
-  }
 
-  for (int i = 0; i < max_rays; i++) {
-    vec3 focused_ray = normalize(ray + dx * antialiasing(i) + dy * antialiasing(i));
-    vec3 focused_point = origin + focused_ray * focused_distance;
-    vec3 me = origin + sight_x * lense_gen(x * 0.0123 + y * 0.07543 + i * 0.12)
-                     + sight_y * lense_gen(x * 0.0652 + y * 0.022571 + i * 0.77);
-    vec3 new_ray = normalize(focused_point - me);
-    if (max_depth > 1) {
-      if (max_depth > 2) {
-        pixel += trace_3(new_ray, me, 0.f);
+  for (int xx = 0; xx < x_batch; xx++) {
+    vec3 pixel = vec3(0);
+    if (frame_num != 0) {
+      pixel = vec3(imageLoad (img_output, pixel_coords + ivec2(xx, 0)));
+    }
+    for (int i = 0; i < max_rays; i++) {
+      vec3 focused_ray = normalize(ray + dx * antialiasing(i) + dy * antialiasing(i));
+      vec3 focused_point = origin + focused_ray * focused_distance;
+      vec3 me = origin + sight_x * lense_gen(x * 0.0123 + y * 0.07543 + i * 0.12)
+        + sight_y * lense_gen(x * 0.0652 + y * 0.022571 + i * 0.77);
+      vec3 new_ray = normalize(focused_point - me);
+      if (max_depth > 1) {
+        if (max_depth > 2) {
+          pixel += trace_3(new_ray, me, 0.f);
+        } else {
+          pixel += trace_2(new_ray, me, 0.f);
+        }
       } else {
-        pixel += trace_2(new_ray, me, 0.f);
-      }
-    } else {
-      if (max_depth == 0) {
-        pixel += trace_0(new_ray, me, 0.f);
-      } else {
-        pixel += trace_1(new_ray, me, 0.f);
+        if (max_depth == 0) {
+          pixel += trace_0(new_ray, me, 0.f);
+        } else {
+          pixel += trace_1(new_ray, me, 0.f);
+        }
       }
     }
+    imageStore (img_output, pixel_coords + ivec2(xx, 0), vec4(pixel, 1));
+    ray += dx;
   }
-
-  imageStore (img_output, pixel_coords, vec4(pixel, 1));
 }

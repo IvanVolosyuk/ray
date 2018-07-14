@@ -374,6 +374,8 @@ void OpenglRenderer::reset_accumulate() {
   frame_num = 0;
 }
 
+extern int x_batch;
+
 void OpenglRenderer::draw() {
 
   glUseProgram( ray_program );
@@ -403,7 +405,7 @@ void OpenglRenderer::draw() {
   }
 
   // launch compute shaders!
-  glDispatchCompute(width_, height_, 1 );
+  glDispatchCompute(width_ / x_batch, height_, 1 );
 
   // prevent sampling befor all writes to image are done
   glMemoryBarrier( GL_SHADER_IMAGE_ACCESS_BARRIER_BIT );

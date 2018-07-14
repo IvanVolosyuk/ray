@@ -8,10 +8,12 @@
 #include "input.h"
 #undef INPUT
 
+float fov = 0.7;
+int x_batch = 8;
+
 vec3 floor_color = vec3 (0.14, 1.0, 0.14);
 vec3 wall_color = vec3 (0.85, 0.8, 0.48);
 vec3 ceiling_color = vec3 (0.98, 0.98, 0.98);
-float fov = 0.7;
 
 struct Room {
   vec3 a_;
