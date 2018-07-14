@@ -77,23 +77,30 @@ float srand(float entropy) {
   return rand(entropy) * 2.f - 1.f;
 }
 
-vec3 wall_distr(in vec3 pos) {
-  return vec3 (
-      srand(pos.x) * wall_distribution,
-      srand(pos.y) * wall_distribution,
-      srand(pos.z) * wall_distribution);
+float normal_rand(float entropy) {
+  //while (true) {
+    float x = rand(entropy);
+    float r = clamp(1/x + 1/(x-1), -1e5, 1e5);
+    if (r > -1000 && r < 1000) return r;
+  // entropy = r;
+  //}
+    float x2 = rand(x);
+    float r2 = clamp(1/x2 + 1/(x2-1), -1e5, 1e5);
+    return r2;
 }
 
-float uniform_rand(float entroy) {
-  float x = rand(entropy);
-  return return 1/x + 1/(x-1);
+vec3 wall_distr(in vec3 pos) {
+  return vec3 (
+      normal_rand(pos.x) * wall_distribution,
+      normal_rand(pos.y) * wall_distribution,
+      normal_rand(pos.z) * wall_distribution);
 }
 
 vec3 light_distr(in vec3 point) {
   return vec3(
-      uniform_rand(point.z) * light_size,
-      uniform_rand(point.x) * light_size,
-      uniform_rand(point.y) * light_size);
+      srand(point.z) * light_size,
+      srand(point.x) * light_size,
+      srand(point.y) * light_size);
 }
 
 float lense_gen(in float a) {
