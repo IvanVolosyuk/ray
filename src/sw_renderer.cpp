@@ -32,9 +32,10 @@ std::unique_ptr<Renderer> SoftwareRenderer::Create(int window_width, int window_
     r->numCPU_ = atoi(cpus);
   }
   if (r->numCPU_ == 0) {
-    r->numCPU_ = 4; //sysconf(_SC_NPROCESSORS_ONLN);
+    r->numCPU_ = std::thread::hardware_concurrency();
   }
-  printf("Num CPUs: %d\n", r->numCPU_);
+  printf("Software renderer initializing... CPUs: %d\n", r->numCPU_);
+  fflush(stdout);
 
   SDL_CreateWindowAndRenderer(
       r->window_width_, r->window_height_, 0, &r->window_, &r->renderer_);
@@ -128,6 +129,7 @@ void SoftwareRenderer::drawThread(int id) {
   int num_frames = frame_ - base_frame_;
   if ((num_frames & (num_frames - 1)) == 0 && id == 0 && num_frames > 16) {
     printf("Num frames: %d\n", num_frames);
+    fflush(stdout);
   }
   double one_mul = 1. / num_frames;
 

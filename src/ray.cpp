@@ -53,6 +53,26 @@ int main(int argc, char** argv) {
       return 1;
     }
 
+    printf(R"(
+Controls:
+
+Escape : Exit
+
+Left Mouse Button         : Focus point
+Right Mouse Button + Drag : Rotate
+
+W,S,A,E = Move
+1,2,3,4 = Depth of ray tracing
+7,8,9   = Change reflectivity of walls
+-,+     = Light source size
+O,P     = Diffuse attenuation
+[,]     = Amount of depth of field effect
+         (press multiple times)
+F       = Switch to 1920x1080
+G       = Switch Sofware / OpenGL renderer
+)");
+    fflush(stdout);
+
     auto renderer = MakeRenderer();
 
     Uint32 ts_move_forward;
@@ -76,26 +96,6 @@ int main(int argc, char** argv) {
       *prev_ts = ts;
       renderer->reset_accumulate();
     };
-
-    printf(R"(
-Controls:
-
-Escape : Exit
-
-Left Mouse Button         : Focus point
-Right Mouse Button + Drag : Rotate
-
-W,S,A,E = Move
-1,2,3,4 = Depth of ray tracing
-7,8,9   = Change reflectivity of walls
--,+     = Light source size
-O,P     = Diffuse attenuation
-[,]     = Amount of depth of field effect
-         (press multiple times)
-F       = Switch to 1920x1080
-G       = Switch Sofware / OpenGL renderer
-)");
-    fflush(stdout);
 
     while (1) {
       auto move_forward = std::bind(apply_motion, sight, &ts_move_forward, _1);

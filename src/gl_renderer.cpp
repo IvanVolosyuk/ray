@@ -418,6 +418,9 @@ void OpenglRenderer::draw() {
   glDrawArrays( GL_TRIANGLE_STRIP, 0, 4 );
   SDL_GL_SwapWindow(window_);
   frame_num++;
-  if ((frame_num & (frame_num - 1)) == 0 && frame_num > 8) printf("Frame num: %d\n", frame_num);
+  if ((frame_num & (frame_num - 1)) == 0 && frame_num > 8) {
+    printf("Frame num: %d\n", frame_num);
+    fflush(stdout);
+  }
 }
 
