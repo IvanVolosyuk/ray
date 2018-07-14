@@ -12,7 +12,7 @@ vpath %.h ../src/shader
 .PHONY: all
 .PHONY: clean
 
-all: ray shader_comp
+all: ray shader.comp
 
 ray: $(OBJ)
 	$(CXX) -o $@ $(OBJ) $(LDFLAGS)
