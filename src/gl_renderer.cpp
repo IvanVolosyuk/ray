@@ -323,6 +323,10 @@ bool OpenglRenderer::setup() {
 }
 
 std::unique_ptr<Renderer> OpenglRenderer::Create(int window_width, int window_height) {
+  SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, OPENGL_PROFILE);
+  SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, OPENGL_MAJOR_VERSION);
+  SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, OPENGL_MINOR_VERSION);
+
   std::unique_ptr<OpenglRenderer> r(new OpenglRenderer());
 
   r->width_ = window_width;
