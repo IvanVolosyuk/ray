@@ -74,6 +74,25 @@ int main(void) {
       renderer->reset_accumulate();
     };
 
+    printf(R"(
+Controls:
+
+Escape : Exit
+
+Left Mouse Button         : Focus point
+Right Mouse Button + Drag : Rotate
+
+W,S,A,E = Move
+1,2,3,4 = Depth of ray tracing
+7,8,9   = Change reflectivity of walls
+-,+     = Light source size
+O,P     = Diffuse attenuation
+[,]     = Amount of depth of field effect
+         (press multiple times)
+F       = Switch to 1920x1080
+G       = Switch Sofware / OpenGL renderer
+)");
+
     while (1) {
       auto move_forward = std::bind(apply_motion, sight, &ts_move_forward, _1);
       auto move_backward = std::bind(apply_motion, -sight, &ts_move_backward, _1);
