@@ -95,6 +95,7 @@ O,P     = Diffuse attenuation
 F       = Switch to 1920x1080
 G       = Switch Sofware / OpenGL renderer
 )");
+    fflush(stdout);
 
     while (1) {
       auto move_forward = std::bind(apply_motion, sight, &ts_move_forward, _1);
