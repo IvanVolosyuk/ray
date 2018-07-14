@@ -11,23 +11,15 @@
 #include "gl_renderer.hpp"
 #include "sw_renderer.hpp"
 #include "vector.hpp"
+#include "shader/input.h"
 
 using namespace std::placeholders;
 
 int window_width = 480;
 int window_height = 270;
-int max_depth = 2;
-
 
 void set_focus_distance(float x, float y) {
-//  vec3 yoffset = sight_y * (float)(window_height / 2);
-//  vec3 xoffset = sight_x * (float)(window_width / 2);
-//
-//  vec3 ray = sight - yoffset - xoffset + sight_y * y + sight_x * x;
-//  P(ray);
-//  vec3 norm_ray = normalize(ray);
-//  P(norm_ray);
-//  focused_distance = SoftwareRenderer::distance(norm_ray, viewer);
+  focused_distance = SoftwareRenderer::distance(x, y, window_width, window_height);
 }
 
 int run_gl = false;
@@ -44,12 +36,11 @@ std::unique_ptr<Renderer> MakeRenderer() {
   return r;
 }
 
-// FIXME
-extern vec3 viewer;
-extern vec3 sight;
-extern vec3 sight_x;
-extern vec3 sight_y;
-extern float focused_distance;
+void update_viewpoint() {
+//  float dx = 1.9 / window_width;
+  sight_x = normalize(cross(sight, vec3(0,0,1)));
+  sight_y = cross(sight, sight_x);
+}
 
 int main(void) {
     SDL_Event event;
@@ -67,7 +58,7 @@ int main(void) {
     Uint32 ts_strafe_right;
 
     bool relative_motion = false;
-//    renderer->update_viewpoint();
+    update_viewpoint();
 
     auto apply_motion = [&renderer](vec3 dir, Uint32* prev_ts, Uint32 ts) {
       if (*prev_ts == 0) {
@@ -86,8 +77,8 @@ int main(void) {
     while (1) {
       auto move_forward = std::bind(apply_motion, sight, &ts_move_forward, _1);
       auto move_backward = std::bind(apply_motion, -sight, &ts_move_backward, _1);
-      auto move_left = std::bind(apply_motion, normalize(-sight_x), &ts_strafe_left, _1);
-      auto move_right = std::bind(apply_motion, normalize(sight_x), &ts_strafe_right, _1);
+      auto move_left = std::bind(apply_motion, -sight_x, &ts_strafe_left, _1);
+      auto move_right = std::bind(apply_motion, sight_x, &ts_strafe_right, _1);
 
       while(SDL_PollEvent(&event)) {
         switch (event.type) {
@@ -123,7 +114,7 @@ int main(void) {
                            vec3 y = normalize(cross(sight, x));
                            sight = normalize(cross(sight, y) * (-0.001f * event.motion.xrel) + sight);
                            sight = normalize(cross(sight, x) * (0.001f * event.motion.yrel) + sight);
-//                           renderer->update_viewpoint();
+                           update_viewpoint();
                            renderer->reset_accumulate();
                          }
                          break;
@@ -172,57 +163,53 @@ int main(void) {
                              max_depth = 3;
                              if (event.key.state != SDL_PRESSED) renderer->reset_accumulate();
                              break;
-//                           case SDL_SCANCODE_7:
-//                             wall_gen = std::normal_distribution<float>{0.0,0.00};
-//                             if (event.key.state != SDL_PRESSED) renderer->reset_accumulate();
-//                             break;
-//                           case SDL_SCANCODE_8:
-//                             wall_gen = std::normal_distribution<float>{0.0,0.20};
-//                             if (event.key.state != SDL_PRESSED) renderer->reset_accumulate();
-//                             break;
-//                           case SDL_SCANCODE_9:
-//                             wall_gen = std::normal_distribution<float>{0.,0.4};
-//                             if (event.key.state != SDL_PRESSED) renderer->reset_accumulate();
-//                             break;
-//                           case SDL_SCANCODE_MINUS:
-//                             printf("Light size 0.1\n");
-//                             light_size = 0.1;
-//                             light_size2 = light_size * light_size;
-//                             light_inv_size = 1 / light_size;
-//                             light_gen = std::normal_distribution<float>{light_size, light_size};
-//                             if (event.key.state != SDL_PRESSED) reset_accumulate();
-//                             break;
-//                           case SDL_SCANCODE_EQUALS:
-//                             printf("Light size 2\n");
-//                             light_size = 0.9;
-//                             light_size2 = light_size * light_size;
-//                             light_inv_size = 1 / light_size;
-//                             light_gen = std::normal_distribution<float>{0, light_size};
-//                             if (event.key.state != SDL_PRESSED) reset_accumulate();
-//                             break;
-//                           case SDL_SCANCODE_LEFTBRACKET:
-//                             lense_blur = std::max(0.f, lense_blur * 0.8f - .0001f);
-//                             if (lense_blur == 0) {
-//                               printf("No blur\n");
-//                             }
-//                             lense_gen = std::normal_distribution<float>{0,lense_blur};
-//                             if (event.key.state != SDL_PRESSED) reset_accumulate();
-//                             break;
-//
-//                           case SDL_SCANCODE_RIGHTBRACKET:
-//                             lense_blur = lense_blur * 1.2f + .0001f;
-//                             lense_gen = std::normal_distribution<float>{0,lense_blur};
-//                             if (event.key.state != SDL_PRESSED) reset_accumulate();
-//                             break;
-//                           case SDL_SCANCODE_O:
-//                             diffuse_attenuation = 0.5;
-//                             if (event.key.state != SDL_PRESSED) reset_accumulate();
-//                             break;
-//
-//                           case SDL_SCANCODE_P:
-//                             diffuse_attenuation = 0.9;
-//                             if (event.key.state != SDL_PRESSED) reset_accumulate();
-//                             break;
+                           case SDL_SCANCODE_7:
+                             if (event.key.state != SDL_PRESSED) renderer->reset_accumulate();
+                             wall_distribution = 0.0;
+                             break;
+                           case SDL_SCANCODE_8:
+                             wall_distribution = 0.20;
+                             if (event.key.state != SDL_PRESSED) renderer->reset_accumulate();
+                             break;
+                           case SDL_SCANCODE_9:
+                             wall_distribution = 0.4;
+                             if (event.key.state != SDL_PRESSED) renderer->reset_accumulate();
+                             break;
+                           case SDL_SCANCODE_MINUS:
+                             printf("Light size 0.1\n");
+                             light_size = 0.1;
+                             light_size2 = light_size * light_size;
+                             light_inv_size = 1 / light_size;
+                             if (event.key.state != SDL_PRESSED) renderer->reset_accumulate();
+                             break;
+                           case SDL_SCANCODE_EQUALS:
+                             printf("Light size 2\n");
+                             light_size = 0.9;
+                             light_size2 = light_size * light_size;
+                             light_inv_size = 1 / light_size;
+                             if (event.key.state != SDL_PRESSED) renderer->reset_accumulate();
+                             break;
+                           case SDL_SCANCODE_LEFTBRACKET:
+                             lense_blur = std::max(0.f, lense_blur * 0.8f - .0001f);
+                             if (lense_blur == 0) {
+                               printf("No blur\n");
+                             }
+                             if (event.key.state != SDL_PRESSED) renderer->reset_accumulate();
+                             break;
+
+                           case SDL_SCANCODE_RIGHTBRACKET:
+                             lense_blur = lense_blur * 1.2f + .0001f;
+                             if (event.key.state != SDL_PRESSED) renderer->reset_accumulate();
+                             break;
+                           case SDL_SCANCODE_O:
+                             diffuse_attenuation = 0.5;
+                             if (event.key.state != SDL_PRESSED) renderer->reset_accumulate();
+                             break;
+
+                           case SDL_SCANCODE_P:
+                             diffuse_attenuation = 0.9;
+                             if (event.key.state != SDL_PRESSED) renderer->reset_accumulate();
+                             break;
                            case SDL_SCANCODE_G:
                              if (event.key.state != SDL_PRESSED) {
                                run_gl = !run_gl;
@@ -260,6 +247,8 @@ int main(void) {
       move_left(newTime);
       move_right(newTime);
 
+//      printf("Sight_x: %f %f %f\n", sight_x.x, sight_x.y, sight_x.z);
+//      printf("Sight_y: %f %f %f\n", sight_y.x, sight_y.y, sight_y.z);
       renderer->draw();
     }
 exit:

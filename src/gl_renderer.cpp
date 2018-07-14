@@ -78,7 +78,7 @@ string reformat_errors(const string& input) {
         string error_msg = m[2].str() ;
         out << lookup->second.second
             << ":" << source_line
-            << error_msg.c_str() << endl;
+            << " s" << err_line << error_msg.c_str() << endl;
       } else {
         out << "Unmatched: " << err_line << " >> " << line << endl;
       }
@@ -172,10 +172,11 @@ const char *frag_shader_str =
 R"(#version 430
 in vec2 st;
 uniform sampler2D img;
+uniform float mul;
 out vec4 fc;
 
 void main () {
-  fc = sqrt(texture (img, st));
+  fc = sqrt(texture (img, st) * mul);
 }
 )";
 
@@ -204,6 +205,39 @@ OpenglRenderer::~OpenglRenderer() {
     SDL_DestroyWindow(window_);
   }
 }
+
+#include "shader/input.h"
+
+enum InputType {
+  IN_VEC3,
+  IN_FLOAT,
+  IN_INT,
+};
+
+std::map<std::string, InputType> inputTypeMap = {
+  {"vec3", IN_VEC3 },
+  {"float", IN_FLOAT },
+  {"int", IN_INT },
+};
+
+InputType LookupInputType(const char* t) {
+  auto it = inputTypeMap.find(t);
+  if (it == inputTypeMap.end()) {
+    std::cerr << "Unknown input type for model: " << t << endl;
+    exit(1);
+  }
+  return it->second;
+}
+
+struct ModelInput {
+  InputType type;
+  const char* name;
+  void* value_ptr;
+} model_inputs[] {
+#define INPUT(type, name, value) { LookupInputType(#type), #name, &name },
+#include "shader/input.h"
+#undef INPUT
+};
 
 bool OpenglRenderer::setup() {
   std::ifstream t("shader.comp");
@@ -248,7 +282,7 @@ bool OpenglRenderer::setup() {
     glTexImage2D( GL_TEXTURE_2D, 0, GL_RGBA32F, width_, height_, 0, GL_RGBA, GL_FLOAT,
         NULL );
     // bind to image unit so can write to specific pixels from the shader
-    glBindImageTexture( 0, tex_output, 0, GL_FALSE, 0, GL_WRITE_ONLY, GL_RGBA32F );
+    glBindImageTexture( 0, tex_output, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F );
   }
 
   { // query up the workgroups
@@ -270,21 +304,21 @@ bool OpenglRenderer::setup() {
     printf( "max computer shader invocations %i\n", work_grp_inv );
   }
 
-  viewer_location = glGetUniformLocation(ray_program, "viewer");
-  if (viewer_location == -1) {
-    std::cerr << "Viewer location undefined: " << SDL_GetError() << endl;
-    return false;
+  // Init inputs
+  glUseProgram( ray_program );
+  for (size_t i = 0; i < LENGTH(model_inputs); i++) {
+    GLint location = glGetUniformLocation(ray_program, model_inputs[i].name);
+    if (location == -1) {
+      std::cerr << "Location " << model_inputs[i].name
+        << " undefined: " << SDL_GetError() << endl;
+      return false;
+    }
+    inputs_.push_back(location);
   }
-  sight_location = glGetUniformLocation(ray_program, "sight");
-  if (sight_location == -1) {
-    std::cerr << "Sight location undefined: " << SDL_GetError() << endl;
-    return false;
-  }
-  focused_distance_location = glGetUniformLocation(ray_program, "focused_distance");
-  if (focused_distance_location == -1) {
-    std::cerr << "Focused distance location undefined: " << SDL_GetError() << endl;
-    return false;
-  }
+  glUseProgram( quad_program );
+  post_processor_mul_ = glGetUniformLocation(quad_program, "mul");
+  frame_num = 0;
+
   return true;
 }
 
@@ -336,14 +370,37 @@ std::unique_ptr<Renderer> OpenglRenderer::Create(int window_width, int window_he
   return r;
 }
 
+void OpenglRenderer::reset_accumulate() {
+  frame_num = 0;
+}
 
 void OpenglRenderer::draw() {
 
   glUseProgram( ray_program );
-  // FIXME
-//  glUniform3f(viewer_location, viewer.x, viewer.y, viewer.z);
-//  glUniform3f(sight_location, sight.x, sight.y, sight.z);
-//  glUniform1f(focused_distance_location, focused_distance);
+  for (size_t i = 0; i < LENGTH(model_inputs); i++) {
+    const ModelInput& input = model_inputs[i];
+    switch(input.type) {
+      case IN_VEC3:
+        {
+          const vec3* value = (vec3*) input.value_ptr;
+          glUniform3f(inputs_[i], value->x, value->y, value->z);
+//          printf("Set %s to (%f,%f,%f)\n", input.name,value->x, value->y, value->z);
+          break;
+        }
+      case IN_INT:
+        {
+          const int* value = (int*) input.value_ptr;
+          glUniform1i(inputs_[i], *value);
+          break;
+        }
+      case IN_FLOAT:
+        {
+          const float* value = (float*) input.value_ptr;
+          glUniform1f(inputs_[i], *value);
+          break;
+        }
+    }
+  }
 
   // launch compute shaders!
   glDispatchCompute(width_, height_, 1 );
@@ -353,10 +410,13 @@ void OpenglRenderer::draw() {
 
 //  glClear( GL_COLOR_BUFFER_BIT );
   glUseProgram( quad_program );
+  glUniform1f(post_processor_mul_, (1.f/(frame_num + 1)/max_rays));
   glBindVertexArray( quad_vao );
   glActiveTexture( GL_TEXTURE0 );
   glBindTexture( GL_TEXTURE_2D, tex_output );
   glDrawArrays( GL_TRIANGLE_STRIP, 0, 4 );
   SDL_GL_SwapWindow(window_);
+  frame_num++;
+  if ((frame_num & (frame_num - 1)) == 0 && frame_num > 8) printf("Frame num: %d\n", frame_num);
 }
 

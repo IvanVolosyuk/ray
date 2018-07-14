@@ -4,14 +4,14 @@
 // Common between shader.h and recursion.h
 #include "software.h"
 
-HW(uniform) vec3 viewer = vec3(0, -5.5, 1.5);
-HW(uniform) vec3 sight = normalize(vec3(0., 1, -0.1));
-HW(uniform) float focused_distance = 3.1;
-HW(uniform) float light_size = 0.9f;
+#define INPUT(type, name, value) HW(uniform) type name = value;
+#include "input.h"
+#undef INPUT
 
 vec3 floor_color = vec3 (0.14, 1.0, 0.14);
 vec3 wall_color = vec3 (0.85, 0.8, 0.48);
 vec3 ceiling_color = vec3 (0.98, 0.98, 0.98);
+float fov = 0.7;
 
 struct Room {
   vec3 a_;
@@ -21,8 +21,6 @@ struct Room {
 float light_power = 150.4f;
 vec3 light_pos = vec3(-4.2, -3, 2);
 vec3 light_color = vec3(light_power, light_power, light_power);
-float light_size2 = light_size * light_size;
-float light_inv_size = 1.f / light_size;
 
 float ball_size = 0.9f;
 float ball_size2 = ball_size * ball_size;
@@ -54,7 +52,6 @@ float max_distance = 1000;
 Hit no_hit = Hit(-1, max_distance, 0);
 
 vec3 black = vec3 (0, 0, 0);
-float diffuse_attenuation = 0.4;
 
 int max_internal_reflections = 30;
 
@@ -75,14 +72,14 @@ float rand(float entropy) {
 }
 
 float srand(float entropy) {
-  return (rand(entropy) * 2.f - 1.f);
+  return rand(entropy) * 2.f - 1.f;
 }
 
 vec3 wall_distr(in vec3 pos) {
   return vec3 (
-      srand(pos.x) * 0.8,
-      srand(pos.y) * 0.8,
-      srand(pos.z) * 0.8);
+      srand(pos.x) * wall_distribution,
+      srand(pos.y) * wall_distribution,
+      srand(pos.z) * wall_distribution);
 }
 
 vec3 light_distr(in vec3 point) {
@@ -93,11 +90,11 @@ vec3 light_distr(in vec3 point) {
 }
 
 float lense_gen(in float a) {
-  return srand(a) * 0.03;
+  return srand(a) * lense_blur;
 }
 
 float antialiasing(in float c) {
-  return srand(c);
+  return srand(c) * 0.5;
 }
 
 float reflect_gen(in vec3 point) {
@@ -107,11 +104,10 @@ float reflect_gen(in vec3 point) {
 #else  // SW
 std::random_device rd;
 std::mt19937 gen(rd());
-float lense_blur = 0.01;
 std::uniform_real_distribution<float> lense_gen{-lense_blur,lense_blur};
 std::uniform_real_distribution<float> reflect_gen{0.f, 1.f};
 
-std::normal_distribution<float> wall_gen{0,0.5};
+std::uniform_real_distribution<float> wall_gen{-0.5, 0.5};
 std::uniform_real_distribution<float> light_gen{-light_size, light_size};
 std::uniform_real_distribution<float> antialiasing{-0.5,0.5};
 vec3 wall_distr() {
@@ -121,8 +117,6 @@ vec3 wall_distr() {
 vec3 light_distr() {
     return vec3(light_gen(gen), light_gen(gen), light_gen(gen));
 }
-
-vec3 sight_x, sight_y;
 
 #endif  // USE_HW
 

@@ -8,6 +8,8 @@
 #define SW(x)
 #define LENGTH(a) a.length()
 #define size_t int
+
+
 #else  // not USE_HW
 
 // Software mode
@@ -16,10 +18,8 @@
 #include <functional>
 #include <random>
 
-float sign(float a) {
-  return std::copysign(1, a);
-}
-float inversesqrt(float a) { return 1./sqrtf(a); }
+inline float sign(float a) { return std::copysign(1, a); }
+inline float inversesqrt(float a) { return 1./sqrtf(a); }
 
 #define HW(x)
 #define SW(x) x

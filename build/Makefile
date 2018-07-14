@@ -19,16 +19,16 @@ ray: $(OBJ)
 
 vector.o: vector.hpp
 
-gl_renderer.o: gl_renderer.hpp vector.hpp renderer.hpp
+gl_renderer.o: gl_renderer.hpp vector.hpp renderer.hpp input.h
 
-sw_renderer.o: sw_renderer.hpp renderer.hpp common.h shader.h software.h recursion.h stages.h
+sw_renderer.o: sw_renderer.hpp renderer.hpp common.h shader.h software.h recursion.h stages.h input.h
 
 ray.o: gl_renderer.hpp vector.hpp
 
 %.pp : %.h
 	gcc -DUSE_HW -E $< > $@
 
-main.pp: main.h recursion.h stages.h shader.h software.h common.h
+main.pp: main.h recursion.h stages.h shader.h software.h common.h input.h
 
 shader.comp.in: main.pp
 	sed  's/#/\/\/ GENERATED DONT EDIT/' $< > $@

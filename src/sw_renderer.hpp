@@ -18,12 +18,11 @@ class SoftwareRenderer : public Renderer {
   void draw() override;
   void reset_accumulate() override;
 
-  static float distance(const vec3 norm_ray, const vec3 origin);
+  static float distance(float x, float y, int window_width, int window_height);
 
   private:
   void drawThread(int id);
   void worker(int id);
-  void update_viewpoint();
 
   SDL_Renderer *renderer_ = nullptr;
   SDL_Texture * texture_ = nullptr;

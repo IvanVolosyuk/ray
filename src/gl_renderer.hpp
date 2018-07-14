@@ -1,6 +1,7 @@
 #include "vector.hpp"
 
 #include <memory>
+#include <vector>
 #define GL_GLEXT_PROTOTYPES 1
 #include <GL/glcorearb.h>
 
@@ -17,6 +18,7 @@ class OpenglRenderer : public Renderer {
       int window_width, int window_height);
   bool setup();
   void draw() override;
+  virtual void reset_accumulate() override;
 
   private:
   SDL_GLContext context_ = nullptr;
@@ -28,7 +30,6 @@ class OpenglRenderer : public Renderer {
   GLuint quad_program;
   GLuint tex_output;
 
-  GLint viewer_location;
-  GLint sight_location;
-  GLint focused_distance_location;
+  std::vector<GLint> inputs_;
+  GLint post_processor_mul_;
 };

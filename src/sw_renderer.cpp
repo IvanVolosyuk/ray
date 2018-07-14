@@ -1,9 +1,6 @@
 #include "sw_renderer.hpp"
 #include <unistd.h>
 
-// FIXME
-extern int max_depth;
-
 //#define P(x) print(#x, x);
 #define P(x) {}
 
@@ -65,16 +62,22 @@ SoftwareRenderer::~SoftwareRenderer() {
   for (auto& t : threads_) t.join();
 }
 
-float SoftwareRenderer::distance(const vec3 norm_ray, const vec3 origin) {
+float SoftwareRenderer::distance(float x, float y, int window_width, int window_height) {
+  vec3 xoffset = sight_x * fov;
+  vec3 yoffset = sight_y * (fov * window_height / window_width);
+  vec3 dx = xoffset * (1.f/(window_width / 2));
+  vec3 dy = yoffset * (1.f/(window_height / 2));
+  vec3 norm_ray = normalize(sight - yoffset - xoffset + dx * x + dy * y);
+
   Hit hit = no_hit;
   for (size_t i = 0; i < LENGTH(balls); i++) {
-    Hit another_hit = ball_hit(i, norm_ray, origin);
+    Hit another_hit = ball_hit(i, norm_ray, viewer);
     if (another_hit.closest_point_distance_from_viewer_
            < hit.closest_point_distance_from_viewer_) {
       hit = another_hit;
     }
   }
-  Hit light = light_hit(norm_ray, origin);
+  Hit light = light_hit(norm_ray, viewer);
   if (light.closest_point_distance_from_viewer_ <
               hit.closest_point_distance_from_viewer_) {
     return light.closest_point_distance_from_viewer_
@@ -87,7 +90,7 @@ float SoftwareRenderer::distance(const vec3 norm_ray, const vec3 origin) {
     return distance_from_origin;
   }
 
-  RoomHit rt = room_hit(norm_ray, origin);
+  RoomHit rt = room_hit(norm_ray, viewer);
   P(rt.min_dist);
   return rt.min_dist;
 }
@@ -115,8 +118,11 @@ vec3 saturateColor(vec3 c) {
 }
 
 void SoftwareRenderer::drawThread(int id) {
-  vec3 yoffset = sight_y * (float)(window_height_ / 2);
-  vec3 xoffset = sight_x * (float)(window_width_ / 2);
+  vec3 xoffset = sight_x * fov;
+  vec3 yoffset = sight_y * (fov * window_height_ / window_width_);
+  vec3 dx = xoffset * (1.f/(window_width_ / 2));
+  vec3 dy = yoffset * (1.f/(window_height_ / 2));
+
   Uint8* my_pixels = pixels_;
   BasePoint<double>* my_fppixels = fppixels_;
   int num_frames = frame_ - base_frame_;
@@ -130,9 +136,9 @@ void SoftwareRenderer::drawThread(int id) {
     if (y % numCPU_ == id) {
       vec3 ray = yray;
       for (int x = 0; x < window_width_; x++) {
-        vec3 focused_ray = normalize(ray + sight_x * antialiasing(gen) + sight_y * antialiasing(gen));
+        vec3 focused_ray = normalize(ray + dx * antialiasing(gen) + dy * antialiasing(gen));
         vec3 focused_point = viewer + focused_ray * focused_distance;
-        vec3 me = viewer + normalize(sight_x) * (float)lense_gen(gen) + normalize(sight_y) * (float)lense_gen(gen);
+        vec3 me = viewer + sight_x * (float)lense_gen(gen) + sight_y * (float)lense_gen(gen);
         vec3 new_ray = normalize(focused_point - me);
 
         trace_values = x == 500 && y == 500;
@@ -149,13 +155,13 @@ void SoftwareRenderer::drawThread(int id) {
         *my_pixels++ = colorToInt(saturated.y);
         *my_pixels++ = colorToInt(saturated.x);
         *my_pixels++ = 255;
-        ray += sight_x;
+        ray += dx;
       }
     } else {
       my_pixels += window_width_ * 4;
       my_fppixels += window_width_;
     }
-    yray += sight_y;
+    yray += dy;
   }
 }
 
@@ -181,18 +187,10 @@ void SoftwareRenderer::worker(int id) {
   }
 }
 
-// FIXME
-void SoftwareRenderer::update_viewpoint() {
-  float dx = 1.9 / window_width_;
-  sight_x = normalize(cross(sight, vec3(0,0,1)));
-  sight_y = cross(sight, sight_x);
-  sight_x *= dx;
-  sight_y *= dx;
-}
-
-
 void SoftwareRenderer::draw() {
-  update_viewpoint();
+  light_gen = std::uniform_real_distribution<float>{-light_size, light_size};
+  wall_gen = std::uniform_real_distribution<float>{-wall_distribution, wall_distribution};
+  lense_gen = std::uniform_real_distribution<float>{-lense_blur,lense_blur};
 
   if (threads_.size() == 0) {
     for (int i = 0; i < numCPU_; i++) {
