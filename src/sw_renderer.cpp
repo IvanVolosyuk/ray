@@ -193,6 +193,15 @@ void SoftwareRenderer::draw() {
   light_gen = std::uniform_real_distribution<float>{-light_size, light_size};
   wall_gen = std::uniform_real_distribution<float>{0, 1};
   lense_gen = std::uniform_real_distribution<float>{-lense_blur,lense_blur};
+  vec3 xmin = vec3(100, 100, 100), xmax = vec3(-100, -100, -100);
+  vec3 sz = vec3(ball_size, ball_size, ball_size);
+//  for (int i = 0; i < LENGTH(balls); i++) {
+//    const vec3& ball = balls[i].position_;
+//    xmin = min(xmin, ball - sz);
+//    xmax = max(xmax, ball + sz);
+//  }
+//  printf("Min: %f %f %f\n", xmin.x, xmin.y, xmin.z);
+//  printf("Max: %f %f %f\n", xmax.x, xmax.y, xmax.z);
 
   if (threads_.size() == 0) {
     for (int i = 0; i < numCPU_; i++) {

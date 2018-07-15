@@ -15,10 +15,11 @@ vec3 floor_color = vec3 (0.14, 1.0, 0.14);
 vec3 wall_color = vec3 (0.85, 0.8, 0.48);
 vec3 ceiling_color = vec3 (0.98, 0.98, 0.98);
 
-struct Room {
+struct Box {
   vec3 a_;
   vec3 b_;
 } room = {vec3 (-6.0f, -6.0f, 0.0f ), vec3 (6.0f, 6.0f, 6.0f)};
+
 
 float light_power = 150.4f;
 vec3 light_pos = vec3(-4.2, -3, 2);
@@ -32,9 +33,15 @@ struct Ball {
   vec3 position_;
   vec3 color_;
 } balls[3] = {
- { vec3(-1, -2, ball_size * 1.0f), vec3(1, 1, 1)},
+ { vec3(-1, -2, ball_size), vec3(1, 1, 1)},
  { vec3(-2 * ball_size, 0, ball_size), vec3(0.01, 1.0, 0.01)},
  { vec3(2 * ball_size, 0, ball_size), vec3(1.00, 0.00, 1.)}
+};
+
+Box bbox = {
+  // precomputed
+  vec3(-2.7, -2.9, 0.0),
+  vec3(2.7, 0.9, 1.8)
 };
 
 struct Hit {

@@ -16,6 +16,7 @@
 #include "vector.hpp"
 #include <cmath>
 #include <functional>
+#include <algorithm>
 #include <random>
 
 inline float sign(float a) { return std::copysign(1, a); }
@@ -29,6 +30,8 @@ inline float inversesqrt(float a) { return 1./sqrtf(a); }
 #define Hit(a,b,c) Hit{a,b,c}
 #define RoomHit(a,b,c,d) RoomHit{a,b,c,d}
 #define LENGTH(a) (sizeof(a)/sizeof(a[0]))
+using std::max;
+using std::min;
 
 #endif  // USE_HW
 

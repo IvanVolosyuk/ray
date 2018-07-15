@@ -41,6 +41,26 @@ Hit ball_hit(in int id, in vec3 norm_ray, in vec3 origin) {
   return Hit(id, closest_point_distance_from_viewer, distance_from_object_center2);
 }
 
+Hit bbox_hit(in vec3 norm_ray, in vec3 origin) {
+  vec3 tMin = (bbox.a_ - origin) / norm_ray;
+  vec3 tMax = (bbox.b_ - origin) / norm_ray;
+  vec3 t1 = min(tMin, tMax);
+  vec3 t2 = max(tMin, tMax);
+  float tNear = max(max(t1.x, t1.y), t1.z);
+  float tFar = min(min(t2.x, t2.y), t2.z);
+  if (tFar < 0 || tNear > tFar) return no_hit;
+
+  Hit hit = no_hit;
+  for (size_t i = 0; i < LENGTH(balls); i++) {
+    Hit other_hit = ball_hit(i, norm_ray, origin);
+    if (other_hit.closest_point_distance_from_viewer_ <
+        hit.closest_point_distance_from_viewer_) {
+      hit = other_hit;
+    }
+  }
+  return hit;
+}
+
 RoomHit room_hit(in vec3 norm_ray, in vec3 origin) {
   vec3 tMin = (room.a_ - origin) / norm_ray;
   vec3 tMax = (room.b_ - origin) / norm_ray;

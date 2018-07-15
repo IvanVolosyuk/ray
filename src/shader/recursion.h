@@ -43,12 +43,9 @@ vec3 CURR(compute_light) (
   float light_distance = 1.f/light_distance_inv;
   vec3 light_from_point_norm = light_from_point * light_distance_inv;
 
-  for (size_t i = 0; i < LENGTH(balls); i++) {
-    Hit res = ball_hit(i, light_from_point_norm, point);
-    if (res.closest_point_distance_from_viewer_ < light_distance) {
-      // Obstracted
-      return total_color;
-    }
+  Hit hit = bbox_hit(light_from_point_norm, point);
+  if (hit.closest_point_distance_from_viewer_ < light_distance) {
+    return total_color;
   }
 
   float angle = angle_x_distance * light_distance_inv;
@@ -205,15 +202,8 @@ vec3 CURR(trace) (
     in vec3 origin,
     float distance_from_eye) {
   vec3 pixel = vec3 (0.0, 0.0, 0.0);
-  Hit hit = no_hit;
 
-  for (size_t i = 0; i < LENGTH(balls); i++) {
-    Hit other_hit = ball_hit(i, norm_ray, origin);
-    if (other_hit.closest_point_distance_from_viewer_ <
-        hit.closest_point_distance_from_viewer_) {
-      hit = other_hit;
-    }
-  }
+  Hit hit = bbox_hit(norm_ray, origin);
 
   Hit light = light_hit(norm_ray, origin);
   if (light.closest_point_distance_from_viewer_ <
