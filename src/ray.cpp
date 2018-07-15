@@ -135,8 +135,8 @@ G       = Switch Sofware / OpenGL renderer
                          if (event.motion.state == SDL_BUTTON_RMASK) {
                            vec3 x = normalize(cross(sight, vec3(0.f,0.f,1.f)));
                            vec3 y = normalize(cross(sight, x));
-                           sight = normalize(cross(sight, y) * (-0.0001f * event.motion.xrel) + sight);
-                           sight = normalize(cross(sight, x) * (0.0001f * event.motion.yrel) + sight);
+                           sight = normalize(cross(sight, y) * (-0.001f * event.motion.xrel) + sight);
+                           sight = normalize(cross(sight, x) * (0.001f * event.motion.yrel) + sight);
                            update_viewpoint();
                            renderer->reset_accumulate();
                          }
@@ -188,7 +188,7 @@ G       = Switch Sofware / OpenGL renderer
                              break;
                            case SDL_SCANCODE_7:
                              if (event.key.state != SDL_PRESSED) renderer->reset_accumulate();
-                             wall_distribution = 0.0;
+                             wall_distribution = 0.01;
                              break;
                            case SDL_SCANCODE_8:
                              wall_distribution = 0.03;
