@@ -75,10 +75,10 @@ G       = Switch Sofware / OpenGL renderer
 
     auto renderer = MakeRenderer();
 
-    Uint32 ts_move_forward = 0;
-    Uint32 ts_move_backward = 0;
-    Uint32 ts_strafe_left = 0;
-    Uint32 ts_strafe_right = 0;
+    Uint32 ts_move_forward;
+    Uint32 ts_move_backward;
+    Uint32 ts_strafe_left;
+    Uint32 ts_strafe_right;
 
     bool relative_motion = false;
     update_viewpoint();
