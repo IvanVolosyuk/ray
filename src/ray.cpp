@@ -97,6 +97,9 @@ G       = Switch Sofware / OpenGL renderer
       renderer->reset_accumulate();
     };
 
+    Uint32 fps_timer = SDL_GetTicks();
+    int fps_frames = 0;
+
     while (1) {
       auto move_forward = std::bind(apply_motion, sight, &ts_move_forward, _1);
       auto move_backward = std::bind(apply_motion, -sight, &ts_move_backward, _1);
@@ -265,6 +268,15 @@ G       = Switch Sofware / OpenGL renderer
       }
 
       Uint32 newTime = SDL_GetTicks();
+      fps_frames++;
+      if (newTime - fps_timer > 5000) {
+        printf("FPS: %4.2f Frame Time: %.3f\n",
+            fps_frames / (float)(newTime - fps_timer) * 1000,
+            (newTime - fps_timer) / (float)fps_frames);
+        fps_timer = newTime;
+        fps_frames = 0;
+      }
+
       move_forward(newTime);
       move_backward(newTime);
       move_left(newTime);
