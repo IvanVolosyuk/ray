@@ -124,7 +124,7 @@ vec3 light_trace(
     vec3 origin,
     float distance_from_eye) {
   float distance_from_origin = p.closest_point_distance_from_viewer_ -
-    sqrt(ball_size2 - p.distance_from_object_center2_);
+    sqrt(light_size2 - p.distance_from_object_center2_);
 
   vec3 intersection = origin + norm_ray * distance_from_origin;
   vec3 distance_from_light_vector = intersection - light_pos;
