@@ -140,7 +140,9 @@ void SoftwareRenderer::drawThread(int id) {
       for (int x = 0; x < window_width_; x++) {
         vec3 focused_ray = normalize(ray + dx * antialiasing(gen) + dy * antialiasing(gen));
         vec3 focused_point = viewer + focused_ray * focused_distance;
-        vec3 me = viewer + sight_x * (float)lense_gen(gen) + sight_y * (float)lense_gen(gen);
+        float r = sqrtf(lense_gen_r(gen)) * lense_blur;
+        float a = lense_gen_a(gen);
+        vec3 me = viewer + sight_x * (r * cos(a)) + sight_y * (r * sin(a));
         vec3 new_ray = normalize(focused_point - me);
 
         trace_values = x == 500 && y == 500;
@@ -191,8 +193,8 @@ void SoftwareRenderer::worker(int id) {
 
 void SoftwareRenderer::draw() {
   light_gen = std::uniform_real_distribution<float>{-light_size, light_size};
-  wall_gen = std::uniform_real_distribution<float>{0, 1};
-  lense_gen = std::uniform_real_distribution<float>{-lense_blur,lense_blur};
+  wall_gen = std::normal_distribution<float>{0, 1};
+  lense_gen_r = std::uniform_real_distribution<float>{0,1};
   vec3 xmin = vec3(100, 100, 100), xmax = vec3(-100, -100, -100);
   vec3 sz = vec3(ball_size, ball_size, ball_size);
 //  for (int i = 0; i < LENGTH(balls); i++) {

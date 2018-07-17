@@ -8,6 +8,8 @@
 #include "input.h"
 #undef INPUT
 
+float PI = 3.14159265358979323846264;
+
 float fov = 0.7;
 int x_batch = 8;
 
@@ -75,32 +77,69 @@ vec3 light_trace(in Hit p, vec3 norm_ray, vec3 origin, float distance_from_eye);
 
 #ifdef USE_HW
 
+uint seed0 = 2;
+uint seq = 0;
+uint k0 = 0xA341316C;
+uint k1 = 0xC8013EA4;
+uint k2 = 0xAD90777D;
+uint k3 = 0x7E95761E;
+uint sum = 0x9e3779b9;
+
+ivec2 irand2() {
+  uint v0 = seed0;
+  uint v1 = seq++;
+  v0 +=((v1 << 4)+k0) ^ (v1 + sum) ^ ((v1 >> 5)+k1);
+  v1 +=((v0 << 4)+k2) ^ (v0 + sum) ^ ((v0 >> 5)+k3);
+  v0 +=((v1 << 4)+k0) ^ (v1 + sum) ^ ((v1 >> 5)+k1);
+  v1 +=((v0 << 4)+k2) ^ (v0 + sum) ^ ((v0 >> 5)+k3);
+  v0 +=((v1 << 4)+k0) ^ (v1 + sum) ^ ((v1 >> 5)+k1);
+  v1 +=((v0 << 4)+k2) ^ (v0 + sum) ^ ((v0 >> 5)+k3);
+  v0 +=((v1 << 4)+k0) ^ (v1 + sum) ^ ((v1 >> 5)+k1);
+  v1 +=((v0 << 4)+k2) ^ (v0 + sum) ^ ((v0 >> 5)+k3);
+  return ivec2 (v0, v1);
+}
+
+vec2 rand2(float entropy, float entropy2) {
+  uint v0 = seed0; // + floatBitsToInt(entropy);
+  uint v1 = seq++; // + floatBitsToInt(entropy2);
+  v0 +=((v1 << 4)+k0) ^ (v1 + sum) ^ ((v1 >> 5)+k1);
+  v1 +=((v0 << 4)+k2) ^ (v0 + sum) ^ ((v0 >> 5)+k3);
+  v0 +=((v1 << 4)+k0) ^ (v1 + sum) ^ ((v1 >> 5)+k1);
+  v1 +=((v0 << 4)+k2) ^ (v0 + sum) ^ ((v0 >> 5)+k3);
+  v0 +=((v1 << 4)+k0) ^ (v1 + sum) ^ ((v1 >> 5)+k1);
+  v1 +=((v0 << 4)+k2) ^ (v0 + sum) ^ ((v0 >> 5)+k3);
+  v0 +=((v1 << 4)+k0) ^ (v1 + sum) ^ ((v1 >> 5)+k1);
+  v1 +=((v0 << 4)+k2) ^ (v0 + sum) ^ ((v0 >> 5)+k3);
+  float fv0 = float(v0 >> 2);
+  float fv1 = float(v1 >> 2);
+  return vec2 (fv0 / 1073741824.f, fv1 / 1073741824.f);
+}
+
 float rand(float entropy) {
-  seed = fract(sin(dot(vec2(seed, entropy), vec2(PHI, PI))) * SQ2);
-  return seed;
+  return rand2(entropy, entropy).y;
 }
 
 float srand(float entropy) {
   return rand(entropy) * 2.f - 1.f;
 }
 
-float normal_rand(float entropy) {
-  //while (true) {
-    float x = rand(entropy);
-    float r = clamp(1/x + 1/(x-1), -1e5, 1e5);
-    if (r > -1000 && r < 1000) return r;
-  // entropy = r;
-  //}
-    float x2 = rand(x);
-    float r2 = clamp(1/x2 + 1/(x2-1), -1e5, 1e5);
-    return r2;
+
+vec2 normal_rand(float entropy, float entropy2) {
+  vec2 rr = rand2(entropy, entropy2);
+  if (rr.x == 0) return vec2(0,0);
+  float r = sqrt(-2 * log(rr.x));
+  float a = rr.y * 2 * PI;
+
+  return vec2 (cos(a) * r, sin(a) * r);
 }
 
 vec3 wall_distr(in vec3 pos) {
+  vec2 n1 = normal_rand(pos.z, pos.x);
+  vec2 n2 = normal_rand(pos.y, pos.y);
   return vec3 (
-      normal_rand(pos.x) * wall_distribution,
-      normal_rand(pos.y) * wall_distribution,
-      normal_rand(pos.z) * wall_distribution);
+      n1.x * wall_distribution,
+      n2.x * wall_distribution,
+      n2.y * wall_distribution);
 }
 
 vec3 light_distr(in vec3 point) {
@@ -110,8 +149,12 @@ vec3 light_distr(in vec3 point) {
       srand(point.y) * light_size);
 }
 
-float lense_gen(in float a) {
-  return srand(a) * lense_blur;
+float lense_gen_r(in float a) {
+  return sqrt(rand(a)) * lense_blur;
+}
+
+float lense_gen_a(in float a) {
+  return rand(a) * 2 * PI;
 }
 
 float antialiasing(in float c) {
@@ -125,20 +168,24 @@ float reflect_gen(in vec3 point) {
 #else  // SW
 std::random_device rd;
 std::mt19937 gen(rd());
-std::uniform_real_distribution<float> lense_gen{-lense_blur,lense_blur};
+std::uniform_real_distribution<float> lense_gen_r{0,1};
+std::uniform_real_distribution<float> lense_gen_a{0,2 * M_PI};
 std::uniform_real_distribution<float> reflect_gen{0.f, 1.f};
 
-std::uniform_real_distribution<float> wall_gen{0, 1};
+std::normal_distribution<float> wall_gen{0, 1};
 std::uniform_real_distribution<float> light_gen{-light_size, light_size};
 std::uniform_real_distribution<float> antialiasing{-0.5,0.5};
-vec3 wall_distr() {
-  auto d = [](float x) { return 1/x + 1/(x-1); };
-  return vec3(
-      d(wall_gen(gen)) * wall_distribution,
-      d(wall_gen(gen)) * wall_distribution,
-      d(wall_gen(gen))* wall_distribution);
-}
 
+vec3 wall_distr() {
+  auto d = []() {
+    return wall_gen(gen);
+  };
+
+  return vec3(
+      d() * wall_distribution,
+      d() * wall_distribution,
+      d() * wall_distribution);
+}
 
 vec3 light_distr() {
     return vec3(light_gen(gen), light_gen(gen), light_gen(gen));

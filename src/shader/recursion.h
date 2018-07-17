@@ -7,6 +7,8 @@
 #define CURR(a) a ## _CURR
 #define NEXT(a) a ## _NEXT
 vec3 trace_NEXT(in vec3 norm_ray, in vec3 origin, float distance_from_eye);
+vec3 trace_all_CURR(in vec3 norm_ray, in vec3 origin, float distance_from_eye);
+Hit bbox_hit(in vec3 norm_ray, in vec3 origin);
 #endif
 
 vec3 CURR(compute_light) (
@@ -20,9 +22,9 @@ vec3 CURR(compute_light) (
 
 #ifdef NEXT
   vec3 reflection = reflection_in;
-  if (rought_surface) {
+//  if (rought_surface) {
     reflection = normalize(reflection + wall_distr(HW(point)));
-  }
+//  }
   vec3 second_ray = NEXT(trace)(reflection, point, distance_from_eye);
   total_color = (color * second_ray) * diffuse_attenuation;
 #endif
@@ -197,7 +199,7 @@ vec3 CURR(room_trace) (
       distance_from_eye + p.min_dist);
 }
 
-vec3 CURR(trace) (
+vec3 CURR(trace_all) (
     in vec3 norm_ray,
     in vec3 origin,
     float distance_from_eye) {
@@ -216,4 +218,12 @@ vec3 CURR(trace) (
   }
 
   return CURR(ball_trace)(hit, norm_ray, origin, distance_from_eye);
+}
+
+vec3 CURR(trace) (
+    in vec3 norm_ray,
+    in vec3 origin,
+    float distance_from_eye) {
+  vec3 color = CURR(trace_all)(norm_ray, origin, distance_from_eye);
+  return max(color, vec3(0));
 }

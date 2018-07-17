@@ -48,7 +48,7 @@ std::map<int, std::pair<int, std::string>> line_map;
 void make_shader_map(const string& shader) {
   line_map.clear();
   auto lines = split(shader, '\n');
-  std::regex marker(R"regexp(// GENERATED DONT EDIT (.*) "(.*)")regexp");
+  std::regex marker(R"regexp(// GENERATED DONT EDIT (.*) "(.*)".*)regexp");
   for (size_t i = 0; i < lines.size(); i++) {
     const string& line = lines[i];
     std::smatch m;
