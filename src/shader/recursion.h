@@ -13,6 +13,7 @@ Hit bbox_hit(in vec3 norm_ray, in vec3 origin);
 
 vec3 CURR(compute_light) (
     in vec3 color,
+    in Material m,
     in vec3 normal,
     in vec3 reflection_in,
     in vec3 point,
@@ -26,12 +27,12 @@ vec3 CURR(compute_light) (
     reflection = normalize(reflection + wall_distr(HW(point)));
 //  }
   vec3 second_ray = NEXT(trace)(reflection, point, distance_from_eye);
-  total_color = (color * second_ray) * diffuse_attenuation;
+  total_color = (color * second_ray) * m.specular_attenuation_;
 #endif
 
-  if (!rought_surface) {
-    return total_color;
-  }
+//  if (!rought_surface) {
+//    return total_color;
+//  }
 
   vec3 light_rnd_pos = light_pos + light_distr(HW(point));
   vec3 light_from_point = light_rnd_pos - point;
@@ -53,7 +54,7 @@ vec3 CURR(compute_light) (
   float angle = angle_x_distance * light_distance_inv;
   float total_distance = light_distance + distance_from_eye;
   vec3 diffuse_color = (color * light_color) *
-    (angle / (total_distance * total_distance) * diffuse_attenuation);
+    (angle / (total_distance * total_distance) * m.diffuse_attenuation_);
   total_color += diffuse_color;
   return total_color;
 }
@@ -93,15 +94,17 @@ vec3 CURR(trace_ball0_internal)(
 }
 
 vec3 CURR(make_reflection)(
-    vec3 color,
-    vec3 norm_ray,
-    vec3 normal,
-    vec3 intersection,
-    float distance_from_eye) {
+    in vec3 color,
+    in Material m,
+    in vec3 norm_ray,
+    in vec3 normal,
+    in vec3 intersection,
+    in float distance_from_eye) {
   // FIXME: use reflect
   vec3 ray_reflection = norm_ray - normal * (2 * dot(norm_ray, normal));
   return CURR(compute_light)(
       color,
+      m,
       normal,
       ray_reflection,
       intersection,
@@ -142,13 +145,13 @@ vec3 CURR(ball_trace) (
   float total_distance = distance_from_eye + distance_from_origin;
 
   if (p.id_ != 0) {
-    return CURR(make_reflection)(ball.color_, norm_ray, normal, intersection, total_distance);
+    return CURR(make_reflection)(ball.color_, ball.material_, norm_ray, normal, intersection, total_distance);
   }
 
   float reflect_ammount = FresnelReflectAmount(1, glass_refraction_index, normal, norm_ray);
 
   if (reflect_ammount >= 1.f) {
-    return CURR(make_reflection)(ball.color_, norm_ray, normal, intersection, total_distance);
+    return CURR(make_reflection)(ball.color_, ball.material_, norm_ray, normal, intersection, total_distance);
   }
 
 
@@ -156,6 +159,7 @@ vec3 CURR(ball_trace) (
     // Trace both if first ray
     return CURR(make_reflection)(
         ball.color_,
+        ball.material_,
         norm_ray, normal,
         intersection,
         total_distance) * reflect_ammount +
@@ -166,7 +170,7 @@ vec3 CURR(ball_trace) (
           total_distance) * (1 - reflect_ammount);
 #else
   if (reflect_ammount > reflect_gen(HW(origin)SW(gen))) {
-    return CURR(make_reflection)(ball.color_, norm_ray, normal, intersection, total_distance);
+    return CURR(make_reflection)(ball.color_, ball.material_, norm_ray, normal, intersection, total_distance);
   } else {
     return CURR(make_refraction)(norm_ray, normal, intersection, total_distance);
   }
@@ -192,7 +196,9 @@ vec3 CURR(room_trace) (
   }
 
   return CURR(compute_light)(
-      color, p.normal,
+      color,
+      room_material,
+      p.normal,
       p.reflection,
       intersection,
       true,

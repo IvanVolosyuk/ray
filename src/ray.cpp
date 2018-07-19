@@ -205,14 +205,14 @@ G       = Switch Sofware / OpenGL renderer
                              printf("Light size 0.1\n");
                              light_size = 0.1;
                              light_size2 = light_size * light_size;
-                             light_inv_size = 1 / light_size;
+//                             light_inv_size = 1 / light_size;
                              if (event.key.state != SDL_PRESSED) renderer->reset_accumulate();
                              break;
                            case SDL_SCANCODE_EQUALS:
                              printf("Light size 2\n");
                              light_size = 0.9;
                              light_size2 = light_size * light_size;
-                             light_inv_size = 1 / light_size;
+//                             light_inv_size = 1 / light_size;
                              if (event.key.state != SDL_PRESSED) renderer->reset_accumulate();
                              break;
                            case SDL_SCANCODE_LEFTBRACKET:
@@ -228,12 +228,12 @@ G       = Switch Sofware / OpenGL renderer
                              if (event.key.state != SDL_PRESSED) renderer->reset_accumulate();
                              break;
                            case SDL_SCANCODE_O:
-                             diffuse_attenuation = 0.5;
+//                             diffuse_attenuation = 0.5;
                              if (event.key.state != SDL_PRESSED) renderer->reset_accumulate();
                              break;
 
                            case SDL_SCANCODE_P:
-                             diffuse_attenuation = 0.9;
+//                             diffuse_attenuation = 0.9;
                              if (event.key.state != SDL_PRESSED) renderer->reset_accumulate();
                              break;
                            case SDL_SCANCODE_G:

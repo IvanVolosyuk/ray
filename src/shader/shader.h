@@ -126,14 +126,14 @@ vec3 light_trace(
   float distance_from_origin = p.closest_point_distance_from_viewer_ -
     sqrt(light_size2 - p.distance_from_object_center2_);
 
-  vec3 intersection = origin + norm_ray * distance_from_origin;
-  vec3 distance_from_light_vector = intersection - light_pos;
+//  vec3 intersection = origin + norm_ray * distance_from_origin;
+//  vec3 distance_from_light_vector = intersection - light_pos;
 
-  vec3 normal = distance_from_light_vector * light_inv_size;
-  float angle = -dot(norm_ray, normal);
+//  vec3 normal = distance_from_light_vector * light_inv_size;
+//  float angle = -dot(norm_ray, normal);
   float total_distance = distance_from_eye + distance_from_origin;
 
-  return light_color * (angle / (total_distance * total_distance));
+  return light_color * (1 / (total_distance * total_distance));
 }
 
 #include "stages.h"

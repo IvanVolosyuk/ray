@@ -13,9 +13,18 @@ float PI = 3.14159265358979323846264;
 float fov = 0.7;
 int x_batch = 8;
 
+struct Material {
+  float diffuse_attenuation_;
+  float specular_attenuation_;
+};
+
 vec3 floor_color = vec3 (0.14, 1.0, 0.14);
 vec3 wall_color = vec3 (0.85, 0.8, 0.48);
 vec3 ceiling_color = vec3 (0.98, 0.98, 0.98);
+
+Material room_material = {
+  0.7, 0.2,
+};
 
 struct Box {
   vec3 a_;
@@ -23,7 +32,7 @@ struct Box {
 } room = {vec3 (-6.0f, -6.0f, 0.0f ), vec3 (6.0f, 6.0f, 6.0f)};
 
 
-float light_power = 150.4f;
+float light_power = 50.4f;
 vec3 light_pos = vec3(-4.2, -3, 2);
 vec3 light_color = vec3(light_power, light_power, light_power);
 
@@ -34,10 +43,11 @@ float ball_inv_size = 1.f / ball_size;
 struct Ball {
   vec3 position_;
   vec3 color_;
+  Material material_;
 } balls[3] = {
- { vec3(-1, -2, ball_size), vec3(1, 1, 1)},
- { vec3(-2 * ball_size, 0, ball_size), vec3(0.01, 1.0, 0.01)},
- { vec3(2 * ball_size, 0, ball_size), vec3(1.00, 0.00, 1.)}
+ { vec3(-1, -2, ball_size), vec3(1, 1, 1), {0, 0.9}},
+ { vec3(-2 * ball_size, 0, ball_size), vec3(0.01, 1.0, 0.01), {0, 0.9}},
+ { vec3(2 * ball_size, 0, ball_size), vec3(1.00, 0.00, 1.), {0.9, 0.01}}
 };
 
 Box bbox = {
@@ -143,10 +153,14 @@ vec3 wall_distr(in vec3 pos) {
 }
 
 vec3 light_distr(in vec3 point) {
-  return vec3(
-      srand(point.z) * light_size,
-      srand(point.x) * light_size,
-      srand(point.y) * light_size);
+  while (true) {
+    float x = srand(point.z);
+    float y = srand(point.x);
+    float z = srand(point.y);
+    if (x*x + y*y + z*z <= 1) {
+      return vec3(x,y,z) * light_size;
+    }
+  }
 }
 
 float lense_gen_r(in float a) {
@@ -173,7 +187,7 @@ std::uniform_real_distribution<float> lense_gen_a{0,2 * M_PI};
 std::uniform_real_distribution<float> reflect_gen{0.f, 1.f};
 
 std::normal_distribution<float> wall_gen{0, 1};
-std::uniform_real_distribution<float> light_gen{-light_size, light_size};
+std::uniform_real_distribution<float> light_gen{-1, 1};
 std::uniform_real_distribution<float> antialiasing{-0.5,0.5};
 
 vec3 wall_distr() {
@@ -188,7 +202,14 @@ vec3 wall_distr() {
 }
 
 vec3 light_distr() {
-    return vec3(light_gen(gen), light_gen(gen), light_gen(gen));
+  while (true) {
+    float x = light_gen(gen);
+    float y = light_gen(gen);
+    float z = light_gen(gen);
+    if (x*x + y*y + z*z <= 1) {
+      return vec3(x,y,z) * light_size;
+    }
+  }
 }
 
 #endif  // USE_HW

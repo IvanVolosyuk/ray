@@ -68,7 +68,10 @@ float SoftwareRenderer::distance(float x, float y, int window_width, int window_
   vec3 yoffset = sight_y * (fov * window_height / window_width);
   vec3 dx = xoffset * (1.f/(window_width / 2));
   vec3 dy = yoffset * (1.f/(window_height / 2));
-  vec3 norm_ray = normalize(sight - yoffset - xoffset + dx * x + dy * y);
+  vec3 ray = (sight - yoffset - xoffset + dx * x + dy * y);
+  vec3 norm_ray = normalize(ray);
+  // Return distance to the plane instead
+  float ray_len = ray.size();
 
   Hit hit = no_hit;
   for (size_t i = 0; i < LENGTH(balls); i++) {
@@ -81,19 +84,19 @@ float SoftwareRenderer::distance(float x, float y, int window_width, int window_
   Hit light = light_hit(norm_ray, viewer);
   if (light.closest_point_distance_from_viewer_ <
               hit.closest_point_distance_from_viewer_) {
-    return light.closest_point_distance_from_viewer_
-      - sqrtf(light_size2 - light.distance_from_object_center2_);
+    return (light.closest_point_distance_from_viewer_
+      - sqrtf(light_size2 - light.distance_from_object_center2_)) / ray_len;
   }
 
   if (hit.id_ >= 0) {
     float distance_from_origin = hit.closest_point_distance_from_viewer_
       - sqrtf(ball_size2 - hit.distance_from_object_center2_);
-    return distance_from_origin;
+    return distance_from_origin / ray_len;
   }
 
   RoomHit rt = room_hit(norm_ray, viewer);
   P(rt.min_dist);
-  return rt.min_dist;
+  return rt.min_dist / ray_len;
 }
 
 // Sort objects by distance / obstraction possibility
@@ -138,7 +141,8 @@ void SoftwareRenderer::drawThread(int id) {
     if (y % numCPU_ == id) {
       vec3 ray = yray;
       for (int x = 0; x < window_width_; x++) {
-        vec3 focused_ray = normalize(ray + dx * antialiasing(gen) + dy * antialiasing(gen));
+        // no normalize here to preserve focal plane
+        vec3 focused_ray = (ray + dx * antialiasing(gen) + dy * antialiasing(gen));
         vec3 focused_point = viewer + focused_ray * focused_distance;
         float r = sqrtf(lense_gen_r(gen)) * lense_blur;
         float a = lense_gen_a(gen);
@@ -192,11 +196,8 @@ void SoftwareRenderer::worker(int id) {
 }
 
 void SoftwareRenderer::draw() {
-  light_gen = std::uniform_real_distribution<float>{-light_size, light_size};
-  wall_gen = std::normal_distribution<float>{0, 1};
-  lense_gen_r = std::uniform_real_distribution<float>{0,1};
-  vec3 xmin = vec3(100, 100, 100), xmax = vec3(-100, -100, -100);
-  vec3 sz = vec3(ball_size, ball_size, ball_size);
+//  vec3 xmin = vec3(100, 100, 100), xmax = vec3(-100, -100, -100);
+//  vec3 sz = vec3(ball_size, ball_size, ball_size);
 //  for (int i = 0; i < LENGTH(balls); i++) {
 //    const vec3& ball = balls[i].position_;
 //    xmin = min(xmin, ball - sz);

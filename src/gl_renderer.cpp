@@ -176,7 +176,22 @@ uniform float mul;
 out vec4 fc;
 
 void main () {
-  fc = sqrt(texture (img, st) * mul);
+  vec4 c = sqrt(texture (img, st) * mul);
+  float m =  max(c.x, max(c.y, c.z));
+  if (m < 1) {
+    fc = c;
+    return;
+  }
+  float total = c.x + c.y + c.z;
+  if (total > 3) {
+    fc = vec4(1,1,1,1);
+    return;
+  }
+  float scale = (3 - total) / (3 * m - total);
+  float grey = 1 - scale * m;
+  fc = vec4(grey + scale * c.x,
+                grey + scale * c.y,
+                grey + scale * c.z, 1);
 }
 )";
 

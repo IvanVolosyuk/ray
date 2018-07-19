@@ -37,7 +37,8 @@ void main () {
       pixel = vec3(imageLoad (img_output, pixel_coords + ivec2(xx, 0)));
     }
     for (int i = 0; i < max_rays; i++) {
-      vec3 focused_ray = normalize(ray + dx * antialiasing(i) + dy * antialiasing(i));
+      // no normalize here to preserve focal plane
+      vec3 focused_ray = (ray + dx * antialiasing(i) + dy * antialiasing(i));
       vec3 focused_point = origin + focused_ray * focused_distance;
       float r = lense_gen_r(0);
       float a = lense_gen_a(0) * 1 * PI;
