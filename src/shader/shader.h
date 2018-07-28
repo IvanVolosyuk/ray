@@ -131,9 +131,11 @@ vec3 light_trace(
 
 //  vec3 normal = distance_from_light_vector * light_inv_size;
 //  float angle = -dot(norm_ray, normal);
-  float total_distance = distance_from_eye + distance_from_origin;
+  if (distance_from_eye == 0.f) {
+    return light_color;
+  }
 
-  return light_color * (1 / (total_distance * total_distance));
+  return light_color * (1 / (distance_from_origin * distance_from_origin));
 }
 
 #include "stages.h"
