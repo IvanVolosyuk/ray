@@ -85,7 +85,7 @@ vec3 CURR(trace_ball0_internal)(
       normal = -normal;
       float eta = glass_refraction_index;
       float k = 1 - eta * eta * (1 - cosi * cosi);
-      vec3 refracted_ray_norm = norm_ray * eta  + normal * (eta * cosi - sqrt(k));
+      vec3 refracted_ray_norm = normalize(norm_ray * eta  + normal * (eta * cosi - sqrt(k)));
       return NEXT(trace)(refracted_ray_norm, intersection, distance_from_eye + distance_from_origin);
     }
   }
@@ -123,7 +123,7 @@ vec3 CURR(make_refraction)(
   if (cosi < 0) return vec3(0);
   float eta = 1.f/glass_refraction_index;
   float k = 1 - eta * eta * (1 - cosi * cosi);
-  vec3 refracted_ray_norm = norm_ray * eta  + normal * (eta * cosi - sqrt(k));
+  vec3 refracted_ray_norm = normalize(norm_ray * eta  + normal * (eta * cosi - sqrt(k)));
   return CURR(trace_ball0_internal)(
       refracted_ray_norm,
       intersection,
