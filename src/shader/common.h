@@ -24,7 +24,7 @@ vec3 wall_color = vec3 (0.85, 0.8, 0.48);
 vec3 ceiling_color = vec3 (0.98, 0.98, 0.98);
 
 Material room_material = {
-  0.2, 0.8, 0.3
+  0.2, 0.8, 0.5
 };
 
 struct Box {
@@ -47,8 +47,8 @@ struct Ball {
   Material material_;
 } balls[3] = {
  { vec3(-1, -2, ball_size), vec3(1, 1, 1), {0.001, 0.9, 0.}},
- { vec3(-2 * ball_size, 0, ball_size), vec3(0.01, 1.0, 0.01), {0.001, 0.9, 0.05}},
- { vec3(2 * ball_size, 0, ball_size), vec3(1.00, 0.00, 1.), {0.001, 0.9, 0.025}}
+ { vec3(-2 * ball_size, 0, ball_size), vec3(0.01, 1.0, 0.01), {0.001, 0.9, 0.0}},
+ { vec3(2 * ball_size, 0, ball_size), vec3(1.00, 0.00, 1.), {0.001, 0.9, 0.0}}
 };
 
 Box bbox = {
@@ -70,6 +70,12 @@ struct RoomHit {
   vec3 color;
 };
 
+struct SineHit {
+  float closest_point_distance_from_viewer_;
+  vec3 point;
+  vec3 center;
+};
+
 float max_distance = 1000;
 Hit no_hit = Hit(-1, max_distance, 0);
 
@@ -84,7 +90,9 @@ float FresnelReflectAmount (float n1, float n2, vec3 normal, vec3 incident);
 Hit ball_hit(in int id, in vec3 norm_ray, in vec3 origin);
 RoomHit room_hit(in vec3 norm_ray, in vec3 origin);
 Hit light_hit(in vec3 norm_ray, in vec3 origin);
+SineHit sine_hit(in vec3 norm_ray, in vec3 origin);
 vec3 light_trace(in Hit p, vec3 norm_ray, vec3 origin, float distance_from_eye);
+vec3 sine_trace(in Hit p, vec3 norm_ray, vec3 origin, float distance_from_eye);
 
 #ifdef USE_HW
 

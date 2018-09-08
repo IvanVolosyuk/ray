@@ -23,16 +23,15 @@ vec3 CURR(compute_light) (
 
 #ifdef NEXT
   vec3 reflection = reflection_in;
-//  if (rought_surface) {
+  if (m.scattering_ != 0) {
     reflection = normalize(reflection + wall_distr(m.scattering_));
-//  }
+  }
   vec3 second_ray = NEXT(trace)(reflection, point, distance_from_eye);
   total_color = (color * second_ray) * m.specular_attenuation_;
 #endif
-
-//  if (!rought_surface) {
-//    return total_color;
-//  }
+  if (m.scattering_ == 0) {
+    return total_color;
+  }
 
   vec3 light_rnd_pos = light_pos + light_distr();
   vec3 light_from_point = light_rnd_pos - point;
@@ -168,10 +167,11 @@ vec3 CURR(ball_trace) (
           intersection,
           distance_from_origin) * (1 - reflect_ammount);
 #else
+  float total_distance = distance_from_eye + distance_from_origin;
   if (reflect_ammount > reflect_gen(HW(origin)SW(gen))) {
-    return CURR(make_reflection)(ball.color_, ball.material_, norm_ray, normal, intersection, distance_from_origin);
+    return CURR(make_reflection)(ball.color_, ball.material_, norm_ray, normal, intersection, total_distance);
   } else {
-    return CURR(make_refraction)(norm_ray, normal, intersection, distance_from_origin);
+    return CURR(make_refraction)(norm_ray, normal, intersection, total_distance);
   }
 #endif
 }
@@ -185,24 +185,61 @@ vec3 CURR(room_trace) (
   vec3 intersection = origin + ray;
   // tiles
   vec3 color = p.color;
-  if (intersection.z < 0.01) {
+  Material material = room_material;
+  vec3 normal = p.normal;
+  vec3 reflection = p.reflection;
+  if (normal.z == 1) {
     color = HW(fract(
           (floor(intersection.x + 10) +
            floor(intersection.y + 10)) * 0.5) == 0)
             SW(((int)(intersection.x + 10) % 2 ==
                   (int)(intersection.y + 10) % 2))
             ? vec3(0.1, 0.1, 0.1) : vec3(1,1,1);
+    float fx = intersection.x - floor(intersection.x);
+    float fy = intersection.y - floor(intersection.y);
+    float min = std::min(std::min(fx, 1-fx), std::min(fy, 1-fy));
+    float mx = (1-fx)+0.1;
+    fx += 0.1;
+    normal.x = -(1/((fx*fx)*(fx*fx))-1/((mx*mx)*(mx*mx))) / 3000;
+    float my = (1-fy)+0.1;
+    fy += 0.1;
+    normal.y = -(1/((fy*fy)*(fy*fy))-1/((my*my)*(my*my))) / 3000;
+    normal = normalize(normal);
+    material.scattering_ = 0.1;
+    reflection = norm_ray - normal * (dot(norm_ray, normal) * 2);
+    if (reflection.z < 0.001) {
+      reflection.z = 0.001;
+      reflection = normalize(reflection);
+    }
   }
 
   return CURR(compute_light)(
       color,
-      room_material,
-      p.normal,
-      p.reflection,
+      material,
+      normal,
+      reflection,
       intersection,
       true,
       p.min_dist);
 }
+
+vec3 CURR(sine_trace)(
+    in SineHit hit,
+    vec3 norm_ray,
+    vec3 origin,
+    float distance_from_eye) {
+  vec3 normal = normalize(hit.point - hit.center);
+  vec3 ray_reflection = norm_ray - normal * (2 * dot(norm_ray, normal));
+  return CURR(compute_light)(
+      vec3(1, 1, 1), //color
+      {0, 1, 0}, // material
+      normal,
+      ray_reflection,
+      hit.point,
+      false,
+      distance_from_eye + hit.closest_point_distance_from_viewer_);
+}
+
 
 vec3 CURR(trace_all) (
     in vec3 norm_ray,
@@ -213,10 +250,18 @@ vec3 CURR(trace_all) (
   Hit hit = bbox_hit(norm_ray, origin);
 
   Hit light = light_hit(norm_ray, origin);
-  if (light.closest_point_distance_from_viewer_ <
-      hit.closest_point_distance_from_viewer_) {
-    return light_trace(light, norm_ray, origin, distance_from_eye);
-  }
+//  SineHit sine = sine_hit(norm_ray, origin);
+//  if (sine.closest_point_distance_from_viewer_ < light.closest_point_distance_from_viewer_) {
+//    if (sine.closest_point_distance_from_viewer_ <
+//        hit.closest_point_distance_from_viewer_) {
+//      return CURR(sine_trace)(sine, norm_ray, origin, distance_from_eye);
+//    }
+//  } else {
+    if (light.closest_point_distance_from_viewer_ <
+        hit.closest_point_distance_from_viewer_) {
+      return light_trace(light, norm_ray, origin, distance_from_eye);
+    }
+//  }
 
   if (hit.id_ < 0) {
     return CURR(room_trace)(norm_ray, origin, distance_from_eye);

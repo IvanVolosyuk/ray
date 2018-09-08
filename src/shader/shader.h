@@ -101,6 +101,63 @@ RoomHit room_hit(in vec3 norm_ray, in vec3 origin) {
   return RoomHit(min_dist, normal, reflection, color);
 }
 
+SineHit sine_hit(in vec3 norm_ray, in vec3 origin) {
+  float h = 0.4;
+  float dh = 0.4;
+  float ball_size2 = dh * dh;
+  float max_z = h + dh;
+  float min_z = h - dh;
+  float period = dh * 2;
+  bool going_in = true;
+
+  float dist0 = (max_z - origin.z) / norm_ray.z;
+  float dist1 = (min_z - origin.z) / norm_ray.z;
+  dist0 = std::max(0.f, dist0);
+  dist1 = std::max(0.f, dist1);
+  if (dist0 == 0 && dist1 == 0) {
+    return SineHit(max_distance, vec3(), vec3());
+  }
+  float x0 = origin.x + norm_ray.x * dist0;
+  float x1 = origin.x + norm_ray.x * dist1;
+  if (norm_ray.z < 0) {
+    assert(dist0 <= dist1);
+    if (x0 > x1) std::swap(x0, x1);
+    // FIXME: compress x dimension
+    for (int i = std::floor(x0/period); i < std::ceil(x1/period); i++) {
+      if (i != 3 && i != 4) continue;
+      float center_x = (i + 0.5) * period;
+      float center_z = h;
+      float dx = center_x - origin.x;
+      float dz = center_z - origin.z;
+      float closest_point_distance_from_viewer = dx * norm_ray.x + dz * norm_ray.z;
+      if (closest_point_distance_from_viewer < 0) {
+        continue;
+      }
+      float ray_projection = sqrt(norm_ray.x * norm_ray.x + norm_ray.z * norm_ray.z);
+      closest_point_distance_from_viewer /= ray_projection;
+      float ball_distance2 = dx * dx + dz * dz;
+      float distance_from_object_center2 = ball_distance2 -
+        closest_point_distance_from_viewer * closest_point_distance_from_viewer;
+      if (distance_from_object_center2 > ball_size2) {
+        continue;
+      }
+      float distance_from_origin = closest_point_distance_from_viewer -
+        sqrt(ball_size2 - distance_from_object_center2);
+      distance_from_origin /= ray_projection;
+      vec3 pos = origin + norm_ray * distance_from_origin;
+      if (pos.y < room.a_.y || pos.y > room.b_.y) {
+        return SineHit(max_distance, vec3(), vec3());
+      }
+
+      return SineHit(-1, pos, vec3(center_x, pos.y, center_z));
+    }
+  } else {
+    return SineHit(max_distance, vec3(), vec3());
+  }
+
+  return SineHit(max_distance, vec3(), vec3());
+}
+
 Hit light_hit(in vec3 norm_ray, in vec3 origin) {
   vec3 light_vector = light_pos - origin;
   float light_distance2 = dot(light_vector, light_vector);
@@ -131,11 +188,9 @@ vec3 light_trace(
 
 //  vec3 normal = distance_from_light_vector * light_inv_size;
 //  float angle = -dot(norm_ray, normal);
-  if (distance_from_eye == 0.f) {
-    return light_color;
-  }
+  float total_distance = distance_from_eye + distance_from_origin;
 
-  return light_color * (1 / (distance_from_origin * distance_from_origin));
+  return light_color * (1 / (total_distance * total_distance));
 }
 
 #include "stages.h"

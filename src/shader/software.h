@@ -29,6 +29,7 @@ inline float inversesqrt(float a) { return 1./sqrtf(a); }
 #define in const
 #define Hit(a,b,c) Hit{a,b,c}
 #define RoomHit(a,b,c,d) RoomHit{a,b,c,d}
+#define SineHit(a,b,c) SineHit{a,b,c}
 #define LENGTH(a) (sizeof(a)/sizeof(a[0]))
 using std::max;
 using std::min;
