@@ -221,6 +221,15 @@ vec3 light_distr() {
   }
 }
 
+extern int texture_width;
+extern int texture_height;
+extern bool texture_has_alpha;
+extern unsigned char* texture_bytes;
+extern vec3* texture_normals;
+extern unsigned char* roughness_bytes;
+extern unsigned char* height_bytes;
+extern unsigned char* normal_bytes;
+
 #endif  // USE_HW
 
 #endif

@@ -188,6 +188,8 @@ vec3 CURR(room_trace) (
   Material material = room_material;
   vec3 normal = p.normal;
   vec3 reflection = p.reflection;
+
+  // Hack for bumpmap for floor
   if (normal.z == 1) {
     color = HW(fract(
           (floor(intersection.x + 10) +
@@ -197,20 +199,54 @@ vec3 CURR(room_trace) (
             ? vec3(0.1, 0.1, 0.1) : vec3(1,1,1);
     float fx = intersection.x - floor(intersection.x);
     float fy = intersection.y - floor(intersection.y);
-    float min = std::min(std::min(fx, 1-fx), std::min(fy, 1-fy));
     float mx = (1-fx)+0.1;
     fx += 0.1;
     normal.x = -(1/((fx*fx)*(fx*fx))-1/((mx*mx)*(mx*mx))) / 3000;
     float my = (1-fy)+0.1;
     fy += 0.1;
     normal.y = -(1/((fy*fy)*(fy*fy))-1/((my*my)*(my*my))) / 3000;
-    normal = normalize(normal);
+    normal = -normalize(normal);
     material.scattering_ = 0.1;
     reflection = norm_ray - normal * (dot(norm_ray, normal) * 2);
-    if (reflection.z < 0.001) {
-      reflection.z = 0.001;
-      reflection = normalize(reflection);
+    normal = -normal;
+    material.diffuse_attenuation_ = 0.8;
+    material.specular_attenuation_ = 0.8;
+//    if (reflection.z < 0.001) {
+//      reflection.z = 0.001;
+//      reflection = normalize(reflection);
+//    }
+  }
+  if (normal.z == 0) {
+    float y = intersection.z / 1;
+    y = y - floor(y);
+    if (isnan(y)) y = 0;
+    float x = (intersection.x + intersection.y) / 1;
+    x -= floor(x);
+    if (isnan(x)) x = 0;
+    int pos = ((int)(y * texture_height) * texture_width + (int)(x * texture_width));
+    color.x = texture_bytes[pos*3 ] / 256.f;
+    color.y = texture_bytes[pos*3 + 1] / 256.f;
+    color.z = texture_bytes[pos*3 + 2] / 256.f;
+    vec3 n;
+    n.x = normal_bytes[pos*3] - 128;
+    n.z = normal_bytes[pos*3+1] - 128;
+    n.y = 128 - normal_bytes[pos*3+2];
+    n = normalize(n);
+
+    if (normal.x != 0) {
+      std::swap(n.x, n.y);
+      n.x *= -normal.x;
+    } else {
+      n.y *= -normal.y;
     }
+    float roughness = roughness_bytes[pos];
+    material.diffuse_attenuation_ = 0.8;
+    material.specular_attenuation_ = 0.8;
+    material.scattering_ = std::max(0.001, 0.801 / (255 - 150) * (roughness - 150));
+//    material.scattering_ = 0.4;
+
+    normal = n;
+    reflection = norm_ray - n * (dot(norm_ray, n) * 2);
   }
 
   return CURR(compute_light)(

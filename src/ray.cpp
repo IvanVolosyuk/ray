@@ -10,6 +10,7 @@
 #include "ray.hpp"
 #include "gl_renderer.hpp"
 #include "sw_renderer.hpp"
+#include "png.hpp"
 #include "vector.hpp"
 #include "shader/input.h"
 
@@ -45,8 +46,38 @@ void update_viewpoint() {
   sight_y = cross(sight, sight_x);
 }
 
+int texture_width;
+int texture_height;
+bool texture_has_alpha;
+unsigned char* texture_bytes;
+unsigned char* roughness_bytes;
+unsigned char* height_bytes;
+unsigned char* normal_bytes;
+//vec3* texture_normals;
+
 int main(int argc, char** argv) {
     SDL_Event event;
+
+    if (!loadPngImage("TexturesCom_StoneWall3_2x2_1024_height.png",
+          &texture_width, &texture_height, &texture_has_alpha, &texture_bytes)) {
+      std::cerr << "Fail to load height texture\n";
+      exit(1);
+    }
+    if (!loadPngImage("TexturesCom_StoneWall3_2x2_1024_normal.png",
+          &texture_width, &texture_height, &texture_has_alpha, &normal_bytes)) {
+      std::cerr << "Fail to load normal texture\n";
+      exit(1);
+    }
+    if (!loadPngImage("TexturesCom_StoneWall3_2x2_1024_roughness.png",
+          &texture_width, &texture_height, &texture_has_alpha, &roughness_bytes)) {
+      std::cerr << "Fail to load roughness texture\n";
+      exit(1);
+    }
+    if (!loadPngImage("TexturesCom_StoneWall3_2x2_1024_albedo.png",
+          &texture_width, &texture_height, &texture_has_alpha, &texture_bytes)) {
+      std::cerr << "Fail to load albedo texture\n";
+      exit(1);
+    }
 
     if (SDL_Init( SDL_INIT_VIDEO) < 0) {
       std::cerr << "Init failed: " << SDL_GetError() << std::endl;
