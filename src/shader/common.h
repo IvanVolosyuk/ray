@@ -16,7 +16,8 @@ int x_batch = 8;
 struct Material {
   float diffuse_attenuation_;
   float specular_attenuation_;
-  float scattering_;
+//  float scattering_;
+  float specular_exponent_;
 };
 
 vec3 floor_color = vec3 (0.14, 1.0, 0.14);
@@ -24,16 +25,16 @@ vec3 wall_color = vec3 (0.85, 0.8, 0.48);
 vec3 ceiling_color = vec3 (0.98, 0.98, 0.98);
 
 Material room_material = {
-  0.2, 0.8, 0.5
+  0.9, 0.9, 1
 };
 
 struct Box {
   vec3 a_;
   vec3 b_;
-} room = {vec3 (-6.0f, -6.0f, 0.0f ), vec3 (6.0f, 6.0f, 6.0f)};
+} room = {vec3 (-6.0f, -6.0f, 0.0f ), vec3 (6.0f, 6.0f, 4.0f)};
 
 
-float light_power = 50.4f;
+float light_power = 100.4f;
 vec3 light_pos = vec3(-4.2, -3, 2);
 vec3 light_color = vec3(light_power, light_power, light_power);
 
@@ -46,9 +47,9 @@ struct Ball {
   vec3 color_;
   Material material_;
 } balls[3] = {
- { vec3(-1, -2, ball_size), vec3(1, 1, 1), {0.001, 0.9, 0.}},
- { vec3(-2 * ball_size, 0, ball_size), vec3(0.01, 1.0, 0.01), {0.001, 0.9, 0.0}},
- { vec3(2 * ball_size, 0, ball_size), vec3(1.00, 0.00, 1.), {0.001, 0.9, 0.0}}
+ { vec3(-1, -2, ball_size), vec3(1, 1, 1), {0.9, 0.9, 1000000}},
+ { vec3(-2 * ball_size, 0, ball_size), vec3(1.00, 0.71, 0.00), {0.9, 0.9, 1000}},
+ { vec3(2 * ball_size, 0, ball_size), vec3(0.56, 0.56, 0.56), {0.9, 0.9, 1000}}
 };
 
 Box bbox = {
@@ -93,6 +94,7 @@ Hit light_hit(in vec3 norm_ray, in vec3 origin);
 SineHit sine_hit(in vec3 norm_ray, in vec3 origin);
 vec3 light_trace(in Hit p, vec3 norm_ray, vec3 origin, float distance_from_eye);
 vec3 sine_trace(in Hit p, vec3 norm_ray, vec3 origin, float distance_from_eye);
+vec3 scatter(in vec3 v, float specular_exponent);
 
 #ifdef USE_HW
 
@@ -221,14 +223,9 @@ vec3 light_distr() {
   }
 }
 
-extern int texture_width;
-extern int texture_height;
-extern bool texture_has_alpha;
-extern unsigned char* texture_bytes;
-extern vec3* texture_normals;
-extern unsigned char* roughness_bytes;
-extern unsigned char* height_bytes;
-extern unsigned char* normal_bytes;
+extern std::unique_ptr<Texture> wall_tex;
+extern std::unique_ptr<Texture> ceiling_tex;
+extern std::unique_ptr<Texture> floor_tex;
 
 #endif  // USE_HW
 

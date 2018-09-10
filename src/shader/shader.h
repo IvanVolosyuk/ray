@@ -66,6 +66,9 @@ RoomHit room_hit(in vec3 norm_ray, in vec3 origin) {
   vec3 tMax = (room.b_ - origin) / norm_ray;
 //  vec3 t1 = min(tMin, tMax);
   vec3 t2 = max(tMin, tMax);
+  if (!isfinite(t2.x)) t2.x = std::numeric_limits<float>::max();
+  if (!isfinite(t2.y)) t2.y = std::numeric_limits<float>::max();
+  if (!isfinite(t2.z)) t2.z = std::numeric_limits<float>::max();
 //  float tNear = max(max(t1.x, t1.y), t1.z);
 //  float tFar = min(min(t2.x, t2.y), t2.z);
 
@@ -98,6 +101,7 @@ RoomHit room_hit(in vec3 norm_ray, in vec3 origin) {
       color = reflection.z < 0 ? ceiling_color : floor_color;
     }
   }
+  assert(isfinite(min_dist));
   return RoomHit(min_dist, normal, reflection, color);
 }
 
@@ -190,7 +194,34 @@ vec3 light_trace(
 //  float angle = -dot(norm_ray, normal);
   float total_distance = distance_from_eye + distance_from_origin;
 
-  return light_color * (1 / (total_distance * total_distance));
+  auto res = light_color * (1 / (total_distance * total_distance + 1e-12f));
+  assert(isfinite(res.size2()));
+  return res;
+}
+
+vec3 scatter(in vec3 v, float specular_exponent) {
+  // https://en.wikipedia.org/wiki/Specular_highlight#Phong_distribution
+  float N = specular_exponent;
+  float r = reflect_gen(HW(origin)SW(gen));
+  // https://programming.guide/random-point-within-circle.html
+  float cos_b = pow(r, 1/(N+1));
+  float sin_b = sqrt(1 - cos_b * cos_b);
+  // https://scicomp.stackexchange.com/questions/27965/rotate-a-vector-by-a-randomly-oriented-angle
+  float a = reflect_gen(HW(origin)SW(gen)) * 2 * M_PI;
+  float sin_a = sin(a);
+  float cos_a = cos(a);
+  vec3 rv = vec3(0,0,1);
+  if (v.y < v.z) {
+    if (v.x < v.y) {
+      rv = vec3(1,0,0);
+    } else {
+      rv = vec3(0,1,0);
+    }
+  }
+  vec3 xv = normalize(cross(v, rv));
+  vec3 yv = cross(v, xv);
+  vec3 res =  xv * (sin_b * sin_a) + yv * (sin_b *cos_a) + v * cos_b;
+  return res;
 }
 
 #include "stages.h"

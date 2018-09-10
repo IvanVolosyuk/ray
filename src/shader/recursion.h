@@ -15,46 +15,73 @@ vec3 CURR(compute_light) (
     in vec3 color,
     in Material m,
     in vec3 normal,
-    in vec3 reflection_in,
+    in vec3 reflection,
     in vec3 point,
     bool rought_surface,
     in float distance_from_eye) {
   vec3 total_color = black;
 
 #ifdef NEXT
-  vec3 reflection = reflection_in;
-  if (m.scattering_ != 0) {
-    reflection = normalize(reflection + wall_distr(m.scattering_));
-  }
-  vec3 second_ray = NEXT(trace)(reflection, point, distance_from_eye);
-  total_color = (color * second_ray) * m.specular_attenuation_;
+  vec3 second_ray_dir = scatter(reflection, m.specular_exponent_);
+  assert(isfinite(second_ray_dir.size()));
+  vec3 second_ray_color = NEXT(trace)(second_ray_dir, point, distance_from_eye);
+  total_color = (color * second_ray_color) * m.specular_attenuation_;
+//  assert(total_color.x >= 0);
+//  assert(total_color.y >= 0);
+//  assert(total_color.z >= 0);
 #endif
-  if (m.scattering_ == 0) {
-    return total_color;
-  }
+//  if (m.scattering_ == 0) {
+//    return total_color;
+//  }
 
   vec3 light_rnd_pos = light_pos + light_distr();
+  assert(isfinite(light_rnd_pos.size2()));
+  assert(isfinite(point.size2()));
+
   vec3 light_from_point = light_rnd_pos - point;
+  assert(isfinite(light_from_point.size2()));
   float angle_x_distance = dot(normal, light_from_point);
+  assert(isfinite(angle_x_distance));
   if (angle_x_distance < 0) {
+    assert(isfinite(total_color.size2()));
     return total_color;
   }
 
   float light_distance2 = dot(light_from_point, light_from_point);
   float light_distance_inv = inversesqrt(light_distance2);
+  assert(isfinite(light_distance_inv));
   float light_distance = 1.f/light_distance_inv;
   vec3 light_from_point_norm = light_from_point * light_distance_inv;
 
   Hit hit = bbox_hit(light_from_point_norm, point);
   if (hit.closest_point_distance_from_viewer_ < light_distance) {
+    assert(isfinite(total_color.size2()));
     return total_color;
   }
 
   float angle = angle_x_distance * light_distance_inv;
+  float a = dot(reflection, light_from_point_norm);
+  if (a < 0) {
+    assert(isfinite(total_color.size2()));
+    return total_color;
+  }
+  assert(isfinite(a));
+  assert(isfinite(m.specular_exponent_));
+  float specular = pow(a, m.specular_exponent_);
+  assert(isfinite(specular));
+  assert(isfinite(angle));
+  assert(isfinite(color.size2()));
+  assert(isfinite(light_color.size2()));
   float total_distance = light_distance + distance_from_eye;
+  assert(isfinite(total_distance));
   vec3 diffuse_color = (color * light_color) *
-    (angle / (total_distance * total_distance) * m.diffuse_attenuation_);
+    (angle * specular / (total_distance * total_distance + 1e-12f) * m.diffuse_attenuation_);
+  assert(diffuse_color.x >= 0);
+  assert(diffuse_color.y >= 0);
+  assert(diffuse_color.z >= 0);
+  assert(isfinite(total_color.size2()));
   total_color += diffuse_color;
+  assert(isfinite(total_color.size2()));
   return total_color;
 }
 
@@ -181,6 +208,8 @@ vec3 CURR(room_trace) (
     in vec3 origin,
     float distance_from_eye) {
   RoomHit p = room_hit(norm_ray, origin);
+  assert(isfinite(norm_ray.size()));
+  assert(isfinite(p.min_dist));
   vec3 ray = norm_ray * p.min_dist;
   vec3 intersection = origin + ray;
   // tiles
@@ -188,66 +217,21 @@ vec3 CURR(room_trace) (
   Material material = room_material;
   vec3 normal = p.normal;
   vec3 reflection = p.reflection;
+  std::tuple<vec3,vec3,float> tex_lookup;
 
   // Hack for bumpmap for floor
-  if (normal.z == 1) {
-    color = HW(fract(
-          (floor(intersection.x + 10) +
-           floor(intersection.y + 10)) * 0.5) == 0)
-            SW(((int)(intersection.x + 10) % 2 ==
-                  (int)(intersection.y + 10) % 2))
-            ? vec3(0.1, 0.1, 0.1) : vec3(1,1,1);
-    float fx = intersection.x - floor(intersection.x);
-    float fy = intersection.y - floor(intersection.y);
-    float mx = (1-fx)+0.1;
-    fx += 0.1;
-    normal.x = -(1/((fx*fx)*(fx*fx))-1/((mx*mx)*(mx*mx))) / 3000;
-    float my = (1-fy)+0.1;
-    fy += 0.1;
-    normal.y = -(1/((fy*fy)*(fy*fy))-1/((my*my)*(my*my))) / 3000;
-    normal = -normalize(normal);
-    material.scattering_ = 0.1;
-    reflection = norm_ray - normal * (dot(norm_ray, normal) * 2);
-    normal = -normal;
-    material.diffuse_attenuation_ = 0.8;
-    material.specular_attenuation_ = 0.8;
-//    if (reflection.z < 0.001) {
-//      reflection.z = 0.001;
-//      reflection = normalize(reflection);
-//    }
-  }
   if (normal.z == 0) {
-    float y = intersection.z / 1;
-    y = y - floor(y);
-    if (isnan(y)) y = 0;
-    float x = (intersection.x + intersection.y) / 1;
-    x -= floor(x);
-    if (isnan(x)) x = 0;
-    int pos = ((int)(y * texture_height) * texture_width + (int)(x * texture_width));
-    color.x = texture_bytes[pos*3 ] / 256.f;
-    color.y = texture_bytes[pos*3 + 1] / 256.f;
-    color.z = texture_bytes[pos*3 + 2] / 256.f;
-    vec3 n;
-    n.x = normal_bytes[pos*3] - 128;
-    n.z = normal_bytes[pos*3+1] - 128;
-    n.y = 128 - normal_bytes[pos*3+2];
-    n = normalize(n);
-
-    if (normal.x != 0) {
-      std::swap(n.x, n.y);
-      n.x *= -normal.x;
-    } else {
-      n.y *= -normal.y;
-    }
-    float roughness = roughness_bytes[pos];
-    material.diffuse_attenuation_ = 0.8;
-    material.specular_attenuation_ = 0.8;
-    material.scattering_ = std::max(0.001, 0.801 / (255 - 150) * (roughness - 150));
-//    material.scattering_ = 0.4;
-
-    normal = n;
-    reflection = norm_ray - n * (dot(norm_ray, n) * 2);
+    tex_lookup = wall_tex->Get((intersection.x + intersection.y)/2, intersection.z/2, normal);
+  } else if (normal.z == -1) {
+    tex_lookup = ceiling_tex->Get(intersection.x / 5, intersection.y / 5, normal);
+  } else {
+    tex_lookup = floor_tex->Get(intersection.x /5, intersection.y / 5, normal);
   }
+  color = std::get<0>(tex_lookup);
+  assert(color.size2() < 10.05);
+  normal = std::get<1>(tex_lookup);
+  material.specular_exponent_ = std::get<2>(tex_lookup);
+  reflection = norm_ray - normal * (dot(norm_ray, normal) * 2);
 
   return CURR(compute_light)(
       color,
@@ -281,6 +265,7 @@ vec3 CURR(trace_all) (
     in vec3 norm_ray,
     in vec3 origin,
     float distance_from_eye) {
+  assert(isfinite(distance_from_eye));
   vec3 pixel = vec3 (0.0, 0.0, 0.0);
 
   Hit hit = bbox_hit(norm_ray, origin);

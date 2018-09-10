@@ -11,6 +11,7 @@
 #include "gl_renderer.hpp"
 #include "sw_renderer.hpp"
 #include "png.hpp"
+#include "texture.hpp"
 #include "vector.hpp"
 #include "shader/input.h"
 
@@ -46,38 +47,16 @@ void update_viewpoint() {
   sight_y = cross(sight, sight_x);
 }
 
-int texture_width;
-int texture_height;
-bool texture_has_alpha;
-unsigned char* texture_bytes;
-unsigned char* roughness_bytes;
-unsigned char* height_bytes;
-unsigned char* normal_bytes;
-//vec3* texture_normals;
+std::unique_ptr<Texture> wall_tex;
+std::unique_ptr<Texture> ceiling_tex;
+std::unique_ptr<Texture> floor_tex;
 
 int main(int argc, char** argv) {
     SDL_Event event;
 
-    if (!loadPngImage("TexturesCom_StoneWall3_2x2_1024_height.png",
-          &texture_width, &texture_height, &texture_has_alpha, &texture_bytes)) {
-      std::cerr << "Fail to load height texture\n";
-      exit(1);
-    }
-    if (!loadPngImage("TexturesCom_StoneWall3_2x2_1024_normal.png",
-          &texture_width, &texture_height, &texture_has_alpha, &normal_bytes)) {
-      std::cerr << "Fail to load normal texture\n";
-      exit(1);
-    }
-    if (!loadPngImage("TexturesCom_StoneWall3_2x2_1024_roughness.png",
-          &texture_width, &texture_height, &texture_has_alpha, &roughness_bytes)) {
-      std::cerr << "Fail to load roughness texture\n";
-      exit(1);
-    }
-    if (!loadPngImage("TexturesCom_StoneWall3_2x2_1024_albedo.png",
-          &texture_width, &texture_height, &texture_has_alpha, &texture_bytes)) {
-      std::cerr << "Fail to load albedo texture\n";
-      exit(1);
-    }
+    wall_tex = Texture::Load("TexturesCom_StoneWall3_2x2_1024", 0.03125);
+    ceiling_tex = Texture::Load("TexturesCom_Concrete_Ceiling_1K", 0.015625);
+    floor_tex = Texture::Load("TexturesCom_Wood_ParquetStrip_1K", 0.125);
 
     if (SDL_Init( SDL_INIT_VIDEO) < 0) {
       std::cerr << "Init failed: " << SDL_GetError() << std::endl;
@@ -221,16 +200,25 @@ G       = Switch Sofware / OpenGL renderer
                              if (event.key.state != SDL_PRESSED) renderer->reset_accumulate();
                              break;
                            case SDL_SCANCODE_7:
-                             if (event.key.state != SDL_PRESSED) renderer->reset_accumulate();
-                             wall_distribution = 0.01;
+                             if (event.key.state != SDL_PRESSED) {
+                               renderer->reset_accumulate();
+                               SoftwareRenderer::adjust(window_width/2, window_height/2,
+                                   window_width, window_height, -1);
+                             }
                              break;
                            case SDL_SCANCODE_8:
-                             wall_distribution = 0.1;
-                             if (event.key.state != SDL_PRESSED) renderer->reset_accumulate();
+                             if (event.key.state != SDL_PRESSED) {
+                               renderer->reset_accumulate();
+                               SoftwareRenderer::adjust(window_width/2, window_height/2,
+                                   window_width, window_height, 0);
+                             }
                              break;
                            case SDL_SCANCODE_9:
-                             wall_distribution = 0.5;
-                             if (event.key.state != SDL_PRESSED) renderer->reset_accumulate();
+                             if (event.key.state != SDL_PRESSED) {
+                               renderer->reset_accumulate();
+                               SoftwareRenderer::adjust(window_width/2, window_height/2,
+                                   window_width, window_height, 1);
+                             }
                              break;
                            case SDL_SCANCODE_MINUS:
                              printf("Light size 0.1\n");

@@ -9,7 +9,7 @@ LDFLAGS=-L. -lSDL2 -lGL -lSDL2 -lGLEW -lpthread -lpng
 endif
 CFLAGS+=-I../src -ggdb
 CXXFLAGS+=-I../src -ggdb -I/usr/include/SDL2 -std=c++17 -O3 -Wall -Ic:\MinGW-w64\mingw64\include -Ic:\msys64\mingw64\include
-OBJ=vector.o ray.o sw_renderer.o gl_renderer.o png.o
+OBJ=vector.o ray.o sw_renderer.o gl_renderer.o png.o texture.o
 
 vpath %.cpp ../src
 vpath %.hpp ../src
@@ -26,11 +26,13 @@ vector.o: vector.hpp
 
 gl_renderer.o: gl_renderer.hpp vector.hpp renderer.hpp input.h
 
-sw_renderer.o: sw_renderer.hpp renderer.hpp common.h shader.h software.h recursion.h stages.h input.h
+sw_renderer.o: sw_renderer.hpp renderer.hpp common.h shader.h software.h recursion.h stages.h input.h texture.hpp
 
 png.o: png.hpp
 
-ray.o: gl_renderer.hpp vector.hpp
+ray.o: gl_renderer.hpp vector.hpp texture.hpp
+
+texture.o: texture.hpp
 
 %.pp : %.h
 	gcc -DUSE_HW -E $< > $@

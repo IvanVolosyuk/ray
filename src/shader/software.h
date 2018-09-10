@@ -13,11 +13,13 @@
 #else  // not USE_HW
 
 // Software mode
-#include "vector.hpp"
 #include <cmath>
 #include <functional>
 #include <algorithm>
 #include <random>
+#include <utility>
+#include "vector.hpp"
+#include "texture.hpp"
 
 inline float sign(float a) { return std::copysign(1, a); }
 inline float inversesqrt(float a) { return 1./sqrtf(a); }

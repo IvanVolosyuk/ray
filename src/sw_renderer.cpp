@@ -1,5 +1,6 @@
 #include "sw_renderer.hpp"
 #include <unistd.h>
+#include <iostream>
 
 //#define P(x) print(#x, x);
 #define P(x) {}
@@ -97,6 +98,57 @@ float SoftwareRenderer::distance(float x, float y, int window_width, int window_
   RoomHit rt = room_hit(norm_ray, viewer);
   P(rt.min_dist);
   return rt.min_dist / ray_len;
+}
+
+void SoftwareRenderer::adjust(float x, float y, int window_width, int window_height, int mode) {
+  vec3 xoffset = sight_x * fov;
+  vec3 yoffset = sight_y * (fov * window_height / window_width);
+  vec3 dx = xoffset * (1.f/(window_width / 2));
+  vec3 dy = yoffset * (1.f/(window_height / 2));
+  vec3 ray = (sight - yoffset - xoffset + dx * x + dy * y);
+  vec3 norm_ray = normalize(ray);
+  // Return distance to the plane instead
+
+  Hit hit = no_hit;
+  for (size_t i = 0; i < LENGTH(balls); i++) {
+    Hit another_hit = ball_hit(i, norm_ray, viewer);
+    if (another_hit.closest_point_distance_from_viewer_
+           < hit.closest_point_distance_from_viewer_) {
+      hit = another_hit;
+    }
+  }
+  Hit light = light_hit(norm_ray, viewer);
+  if (light.closest_point_distance_from_viewer_ <
+              hit.closest_point_distance_from_viewer_) {
+    return;
+  }
+
+  auto adj = [&](const char* name, float* exp) {
+    switch (mode) {
+      case 0: *exp = 32;
+              break;
+      case 1: *exp = (*exp == 0) ? 1 : (*exp * 2);
+              break;
+      case -1: *exp /= 2;
+    }
+    std::cerr << name << ": exp: " << *exp << std::endl;
+  };
+
+  if (hit.id_ >= 0) {
+    adj("Ball", &balls[hit.id_].material_.specular_exponent_);
+    return;
+  }
+
+  RoomHit rt = room_hit(norm_ray, viewer);
+  if (rt.normal.z == 1) {
+    adj("Floor", &floor_tex->exp);
+    return;
+  }
+  if (rt.normal.z == 0) {
+    adj("Wall", &wall_tex->exp);
+    return;
+  }
+  adj("Ceiling", &ceiling_tex->exp);
 }
 
 // Sort objects by distance / obstraction possibility

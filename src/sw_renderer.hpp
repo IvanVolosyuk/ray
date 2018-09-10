@@ -19,6 +19,7 @@ class SoftwareRenderer : public Renderer {
   void reset_accumulate() override;
 
   static float distance(float x, float y, int window_width, int window_height);
+  static void adjust(float x, float y, int window_width, int window_height, int mode);
 
   private:
   void drawThread(int id);
