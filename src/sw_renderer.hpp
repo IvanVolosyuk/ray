@@ -20,6 +20,9 @@ class SoftwareRenderer : public Renderer {
 
   static float distance(float x, float y, int window_width, int window_height);
   static void adjust(float x, float y, int window_width, int window_height, int mode);
+  void set_exposure_compensation(bool e) override {
+    enable_exposure_compensation_ = e;
+  }
 
   private:
   void drawThread(int id);
@@ -29,6 +32,8 @@ class SoftwareRenderer : public Renderer {
   SDL_Texture * texture_ = nullptr;
 
   std::vector<std::thread> threads_;
+  std::vector<double> screen_measure_;
+  float multiplier_ = 1;
   std::mutex m_;
   std::condition_variable cv_;
   int frame_ = 0;
@@ -40,4 +45,5 @@ class SoftwareRenderer : public Renderer {
   int numCPU_ = 0;
   int window_width_;
   int window_height_;
+  bool enable_exposure_compensation_ = false;
 };

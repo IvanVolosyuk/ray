@@ -74,6 +74,7 @@ Right Mouse Button + Drag : Rotate
 W,S,A,E = Move
 1,2,3,4 = Depth of ray tracing
 7,8,9   = Change reflectivity of walls
+0       = Exposure compesation
 -,+     = Light source size
 O,P     = Diffuse attenuation
 [,]     = Amount of depth of field effect
@@ -181,6 +182,9 @@ G       = Switch Sofware / OpenGL renderer
                            case SDL_SCANCODE_D:
                              move_right(event.key.timestamp);
                              update_key_ts(&ts_strafe_right);
+                             break;
+                           case SDL_SCANCODE_0:
+                             renderer->set_exposure_compensation(event.key.state == SDL_PRESSED);
                              break;
                            case SDL_SCANCODE_1:
                              // FIXME:

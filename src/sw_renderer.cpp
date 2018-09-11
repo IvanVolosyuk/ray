@@ -174,6 +174,7 @@ vec3 saturateColor(vec3 c) {
 }
 
 void SoftwareRenderer::drawThread(int id) {
+  float total = 0;
   vec3 xoffset = sight_x * fov;
   vec3 yoffset = sight_y * (fov * window_height_ / window_width_);
   vec3 dx = xoffset * (1.f/(window_width_ / 2));
@@ -186,7 +187,7 @@ void SoftwareRenderer::drawThread(int id) {
     printf("Num frames: %d\n", num_frames);
     fflush(stdout);
   }
-  double one_mul = 1. / num_frames;
+  double one_mul = 1. / num_frames / multiplier_;
 
   vec3 yray = sight - yoffset - xoffset;
   for (int y = 0; y < window_height_; y++) {
@@ -209,6 +210,7 @@ void SoftwareRenderer::drawThread(int id) {
         // accumulate
         *my_fppixels += BasePoint<double>::convert(res);
         res = BasePoint<float>::convert(*my_fppixels++ * one_mul);
+        total += res.x + res.y + res.z;
 
         vec3 saturated = saturateColor(res);
         *my_pixels++ = colorToInt(saturated.z);
@@ -223,6 +225,7 @@ void SoftwareRenderer::drawThread(int id) {
     }
     yray += dy;
   }
+  screen_measure_[id] = total * multiplier_;
 }
 
 void SoftwareRenderer::worker(int id) {
@@ -262,6 +265,7 @@ void SoftwareRenderer::draw() {
     for (int i = 0; i < numCPU_; i++) {
       threads_.push_back(std::thread(&SoftwareRenderer::worker, this,i));
     }
+    screen_measure_.resize(numCPU_);
   }
 
   {
@@ -277,6 +281,13 @@ void SoftwareRenderer::draw() {
   {
     std::unique_lock<std::mutex> lk(m_);
     cv_.wait(lk, [this]{return num_running_ == 0;});
+  }
+  float total = 0;
+  for (double m : screen_measure_) {
+    total += m;
+  }
+  if (enable_exposure_compensation_) {
+    multiplier_ = total / window_width_ / window_height_ / 3 * 10;
   }
   SDL_UpdateTexture(texture_, NULL, (void*)pixels_, window_width_ * sizeof(Uint32));
   SDL_RenderCopy(renderer_, texture_, NULL, NULL);

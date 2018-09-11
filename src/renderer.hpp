@@ -13,6 +13,7 @@ class Renderer {
 
   virtual void draw() {}
   virtual void reset_accumulate() {}
+  virtual void set_exposure_compensation(bool e) {}
 
   protected:
   SDL_Window *window_ = nullptr;
