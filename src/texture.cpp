@@ -7,7 +7,7 @@
 namespace {
 
 void LoadImage(const std::string& path,
-    unsigned char** bytes,
+    std::vector<unsigned char>* bytes,
     int* width,
     int* height,
     bool expected_alpha) {

@@ -2,6 +2,7 @@
 #define __TEXTURE_H__
 
 #include <memory>
+#include <vector>
 #include "vector.hpp"
 
 class Texture {
@@ -15,9 +16,9 @@ class Texture {
     int width;
     int height;
     // FIXME: memory leak
-    unsigned char* albedo;
-    unsigned char* normals;
-    unsigned char* roughness;
+    std::vector<unsigned char> albedo;
+    std::vector<unsigned char> normals;
+    std::vector<unsigned char> roughness;
 };
 
 #endif  // __TEXTURE_H__

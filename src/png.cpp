@@ -5,9 +5,10 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <png.h>
+#include "png.hpp"
 #include <string.h>
 
-bool loadPngImage(const char *name, int* outWidth, int* outHeight, bool* outHasAlpha, unsigned char **outData) {
+bool loadPngImage(const char *name, int* outWidth, int* outHeight, bool* outHasAlpha, std::vector<unsigned char>* outData) {
   png_structp png_ptr;
   png_infop info_ptr;
   unsigned int sig_read = 0;
@@ -101,7 +102,7 @@ bool loadPngImage(const char *name, int* outWidth, int* outHeight, bool* outHasA
   *outHeight = height;
 
   unsigned int row_bytes = png_get_rowbytes(png_ptr, info_ptr);
-  *outData = (unsigned char*) malloc(row_bytes * *outHeight);
+  outData->resize(row_bytes * *outHeight);
 
   png_bytepp row_pointers = png_get_rows(png_ptr, info_ptr);
 
@@ -109,7 +110,7 @@ bool loadPngImage(const char *name, int* outWidth, int* outHeight, bool* outHasA
     // note that png is ordered top to
     // bottom, but OpenGL expect it bottom to top
     // so the order or swapped
-    memcpy(*outData+(row_bytes * (*outHeight-1-i)), row_pointers[i], row_bytes);
+    memcpy(&(*outData)[row_bytes * (*outHeight-1-i)], row_pointers[i], row_bytes);
   }
 
   /* Clean up after the read,
