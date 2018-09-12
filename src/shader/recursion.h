@@ -13,8 +13,10 @@ Hit bbox_hit(in vec3 norm_ray, in vec3 origin);
 
 vec3 CURR(compute_light) (
     in vec3 color,
+    in vec3 specular_color,
     in Material m,
     in vec3 normal,
+    in vec3 norm_ray,
     in vec3 reflection,
     in vec3 point,
     bool rought_surface,
@@ -22,17 +24,25 @@ vec3 CURR(compute_light) (
   vec3 total_color = black;
 
 #ifdef NEXT
-  vec3 second_ray_dir = scatter(reflection, m.specular_exponent_);
-  assert(isfinite(second_ray_dir.size()));
-  vec3 second_ray_color = NEXT(trace)(second_ray_dir, point, distance_from_eye);
-  total_color = (color * second_ray_color) * m.specular_attenuation_;
-//  assert(total_color.x >= 0);
-//  assert(total_color.y >= 0);
-//  assert(total_color.z >= 0);
+  float r = reflect_gen(HW(origin)SW(gen));
+  if (r < m.diffuse_ammount_) {
+    vec3 second_ray_dir = scatter(reflection, 0);
+    float angle = dot(second_ray_dir, normal);
+    if (angle > 0) {
+      assert(isfinite(second_ray_dir.size()));
+      vec3 second_ray_color = NEXT(trace)(second_ray_dir, point, distance_from_eye);
+      total_color = (color * second_ray_color) * angle;
+    }
+  } else {
+    vec3 second_ray_dir = scatter(reflection, m.specular_exponent_);
+    float angle = dot(second_ray_dir, normal);
+    if (angle > 0) {
+      assert(isfinite(second_ray_dir.size()));
+      vec3 second_ray_color = NEXT(trace)(second_ray_dir, point, distance_from_eye);
+      total_color = (second_ray_color * specular_color) * angle;
+    }
+  }
 #endif
-//  if (m.scattering_ == 0) {
-//    return total_color;
-//  }
 
   vec3 light_rnd_pos = light_pos + light_distr();
   assert(isfinite(light_rnd_pos.size2()));
@@ -61,21 +71,27 @@ vec3 CURR(compute_light) (
 
   float angle = angle_x_distance * light_distance_inv;
   float a = dot(reflection, light_from_point_norm);
-  if (a < 0) {
-    assert(isfinite(total_color.size2()));
-    return total_color;
+  float specular = 0;
+  if (a > 0) {
+    // Clamp
+    a = std::min(a, 1.f);
+
+    assert(isfinite(a));
+    assert(isfinite(m.specular_exponent_));
+    specular = pow(a, m.specular_exponent_);
   }
-  assert(isfinite(a));
-  assert(isfinite(m.specular_exponent_));
-  float specular = pow(a, m.specular_exponent_);
   assert(isfinite(specular));
   assert(isfinite(angle));
   assert(isfinite(color.size2()));
   assert(isfinite(light_color.size2()));
   float total_distance = light_distance + distance_from_eye;
   assert(isfinite(total_distance));
-  vec3 diffuse_color = (color * light_color) *
-    (angle * specular / (total_distance * total_distance + 1e-12f) * m.diffuse_attenuation_);
+//  vec3 diffuse_color = (color * light_color) *
+//    (angle * specular / (total_distance * total_distance + 1e-12f) * m.diffuse_attenuation_);
+  
+  // FIXME: should angle be only used for diffuse color?
+  vec3 reflected_light = (color * light_color) * m.diffuse_ammount_ + light_color * (1-m.diffuse_ammount_) * specular;
+  vec3 diffuse_color = reflected_light * (angle / (total_distance * total_distance + 1e-12f));
   assert(diffuse_color.x >= 0);
   assert(diffuse_color.y >= 0);
   assert(diffuse_color.z >= 0);
@@ -90,6 +106,7 @@ vec3 CURR(trace_ball0_internal)(
     HW(in) vec3 origin,
     HW(in) float distance_from_eye) {
 #ifdef NEXT
+  float attenuation = 1;
   for (int i = 0; i < max_internal_reflections; i++) {
     vec3 ball_vector = balls[0].position_ - origin;
     float closest_point_distance_from_viewer = dot(norm_ray, ball_vector);
@@ -98,12 +115,13 @@ vec3 CURR(trace_ball0_internal)(
     vec3 distance_from_ball_vector = intersection - balls[0].position_;
     vec3 normal = distance_from_ball_vector * ball_inv_size;
 
-    if (FresnelReflectAmount(glass_refraction_index, 1, normal, norm_ray) > reflect_gen(SW(gen))) {
+    if (reflect_gen(SW(gen)) < FresnelReflectAmount(glass_refraction_index, 1, normal, norm_ray)) {
       vec3 ray_reflection = norm_ray - normal * (2 * dot(norm_ray, normal));
       // Restart from new point
       norm_ray = ray_reflection;
       origin = intersection;
       distance_from_eye += distance_from_origin;
+      attenuation *= 0.9;
       continue;
     } else {
       // refract
@@ -112,7 +130,7 @@ vec3 CURR(trace_ball0_internal)(
       float eta = glass_refraction_index;
       float k = 1 - eta * eta * (1 - cosi * cosi);
       vec3 refracted_ray_norm = normalize(norm_ray * eta  + normal * (eta * cosi - sqrt(k)));
-      return NEXT(trace)(refracted_ray_norm, intersection, distance_from_eye + distance_from_origin);
+      return NEXT(trace)(refracted_ray_norm, intersection, distance_from_eye + distance_from_origin) * attenuation;
     }
   }
 #endif
@@ -130,8 +148,10 @@ vec3 CURR(make_reflection)(
   vec3 ray_reflection = norm_ray - normal * (2 * dot(norm_ray, normal));
   return CURR(compute_light)(
       color,
+      color,
       m,
       normal,
+      norm_ray,
       ray_reflection,
       intersection,
       false,
@@ -168,37 +188,33 @@ vec3 CURR(ball_trace) (
   vec3 intersection = origin + norm_ray * distance_from_origin;
   vec3 distance_from_ball_vector = intersection - ball.position_;
   vec3 normal = distance_from_ball_vector * ball_inv_size;
+  float total_distance = distance_from_eye + distance_from_origin;
 
   if (p.id_ != 0) {
-    return CURR(make_reflection)(ball.color_, ball.material_, norm_ray, normal, intersection, distance_from_origin);
+    return CURR(make_reflection)(ball.color_, ball.material_, norm_ray, normal, intersection, total_distance);
   }
 
   float reflect_ammount = FresnelReflectAmount(1, glass_refraction_index, normal, norm_ray);
 
-  if (reflect_ammount >= 1.f) {
-    return CURR(make_reflection)(ball.color_, ball.material_, norm_ray, normal, intersection, distance_from_origin);
-  }
-
 
 #ifdef MAX_STAGE
-    // Trace both if first ray
-    return CURR(make_reflection)(
-        ball.color_,
-        ball.material_,
-        norm_ray, normal,
+  // Trace both if first ray
+  return CURR(make_reflection)(
+      ball.color_,
+      ball.material_,
+      norm_ray, normal,
+      intersection,
+      total_distance) * reflect_ammount +
+    CURR(make_refraction)(
+        norm_ray,
+        normal,
         intersection,
-        distance_from_origin) * reflect_ammount +
-      CURR(make_refraction)(
-          norm_ray,
-          normal,
-          intersection,
-          distance_from_origin) * (1 - reflect_ammount);
+        total_distance) * (1 - reflect_ammount);
 #else
-  float total_distance = distance_from_eye + distance_from_origin;
-  if (reflect_ammount > reflect_gen(HW(origin)SW(gen))) {
-    return CURR(make_reflection)(ball.color_, ball.material_, norm_ray, normal, intersection, total_distance);
+  if (reflect_gen(SW(gen)) < reflect_ammount) {
+    return CURR(make_reflection)(ball.color_, ball.material_, norm_ray, normal, intersection, total_distance) * 0.9f;
   } else {
-    return CURR(make_refraction)(norm_ray, normal, intersection, total_distance);
+    return CURR(make_refraction)(norm_ray, normal, intersection, total_distance) * 0.9f;
   }
 #endif
 }
@@ -217,7 +233,7 @@ vec3 CURR(room_trace) (
   Material material = room_material;
   vec3 normal = p.normal;
   vec3 reflection = p.reflection;
-  std::tuple<vec3,vec3,float> tex_lookup;
+  std::tuple<vec3,vec3,float,float> tex_lookup;
 
   // Hack for bumpmap for floor
   if (normal.z == 0) {
@@ -231,12 +247,15 @@ vec3 CURR(room_trace) (
   assert(color.size2() < 10.05);
   normal = std::get<1>(tex_lookup);
   material.specular_exponent_ = std::get<2>(tex_lookup);
+  material.diffuse_ammount_ = std::get<3>(tex_lookup);
   reflection = norm_ray - normal * (dot(norm_ray, normal) * 2);
 
   return CURR(compute_light)(
       color,
+      vec3(1,1,1),
       material,
       normal,
+      norm_ray,
       reflection,
       intersection,
       true,
@@ -252,8 +271,10 @@ vec3 CURR(sine_trace)(
   vec3 ray_reflection = norm_ray - normal * (2 * dot(norm_ray, normal));
   return CURR(compute_light)(
       vec3(1, 1, 1), //color
-      {0, 1, 0}, // material
+      vec3(1,1,1),
+      {0, 1}, // material
       normal,
+      norm_ray,
       ray_reflection,
       hit.point,
       false,

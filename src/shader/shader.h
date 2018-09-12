@@ -112,7 +112,6 @@ SineHit sine_hit(in vec3 norm_ray, in vec3 origin) {
   float max_z = h + dh;
   float min_z = h - dh;
   float period = dh * 2;
-  bool going_in = true;
 
   float dist0 = (max_z - origin.z) / norm_ray.z;
   float dist1 = (min_z - origin.z) / norm_ray.z;
@@ -204,7 +203,7 @@ vec3 scatter(in vec3 v, float specular_exponent) {
   float N = specular_exponent;
   float r = reflect_gen(HW(origin)SW(gen));
   // https://programming.guide/random-point-within-circle.html
-  float cos_b = pow(r, 1/(N+1));
+  float cos_b = specular_exponent != 0 ? pow(r, 1/(N+1)) : r * 2 - 1;
   float sin_b = sqrt(1 - cos_b * cos_b);
   // https://scicomp.stackexchange.com/questions/27965/rotate-a-vector-by-a-randomly-oriented-angle
   float a = reflect_gen(HW(origin)SW(gen)) * 2 * M_PI;

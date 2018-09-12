@@ -47,6 +47,8 @@ std::unique_ptr<Renderer> SoftwareRenderer::Create(int window_width, int window_
       SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STATIC, window_width, window_height);
   r->fppixels_ = new BasePoint<double>[window_width * window_height];
   r->pixels_ = new Uint8[window_width * window_height * 4];
+  r->pp_fppixels_ = new vec3[window_width * window_height];
+  r->pp_fppixels2_ = new vec3[window_width * window_height];
 
   SDL_RenderPresent(r->renderer_);
   return r;
@@ -56,12 +58,15 @@ SoftwareRenderer::~SoftwareRenderer() {
   SDL_DestroyRenderer(renderer_);
   SDL_DestroyWindow(window_);
   SDL_DestroyTexture(texture_);
-  delete fppixels_;
-  delete pixels_;
 
   die_ = true;
   draw();
   for (auto& t : threads_) t.join();
+
+  delete fppixels_;
+  delete pixels_;
+  delete pp_fppixels_;
+  delete pp_fppixels2_;
 }
 
 float SoftwareRenderer::distance(float x, float y, int window_width, int window_height) {
@@ -123,32 +128,38 @@ void SoftwareRenderer::adjust(float x, float y, int window_width, int window_hei
     return;
   }
 
-  auto adj = [&](const char* name, float* exp) {
+  auto adj = [&](const char* name, float *exp, float *di) {
     switch (mode) {
       case 0: *exp = 32;
               break;
       case 1: *exp = (*exp == 0) ? 1 : (*exp * 2);
               break;
       case -1: *exp /= 2;
+               break;
+      case 9: *di = std::max(0.f, *di - 0.05f);
+              break;
+      case 10: *di = std::min(1.f, *di + 0.05f);
+               break;
     }
-    std::cerr << name << ": exp: " << *exp << std::endl;
+    std::cerr << name << ": exp: " << *exp << " diffuse_ammount: " << *di << std::endl;
   };
 
   if (hit.id_ >= 0) {
-    adj("Ball", &balls[hit.id_].material_.specular_exponent_);
+    adj("Ball", &balls[hit.id_].material_.specular_exponent_,
+        &balls[hit.id_].material_.diffuse_ammount_);
     return;
   }
 
   RoomHit rt = room_hit(norm_ray, viewer);
   if (rt.normal.z == 1) {
-    adj("Floor", &floor_tex->exp);
+    adj("Floor", &floor_tex->specular_exponent_, &floor_tex->diffuse_ammount_);
     return;
   }
   if (rt.normal.z == 0) {
-    adj("Wall", &wall_tex->exp);
+    adj("Wall", &wall_tex->specular_exponent_, &wall_tex->diffuse_ammount_);
     return;
   }
-  adj("Ceiling", &ceiling_tex->exp);
+  adj("Ceiling", &ceiling_tex->specular_exponent_, &ceiling_tex->diffuse_ammount_);
 }
 
 // Sort objects by distance / obstraction possibility
@@ -212,11 +223,11 @@ void SoftwareRenderer::drawThread(int id) {
         res = BasePoint<float>::convert(*my_fppixels++ * one_mul);
         total += res.x + res.y + res.z;
 
-        vec3 saturated = saturateColor(res);
-        *my_pixels++ = colorToInt(saturated.z);
-        *my_pixels++ = colorToInt(saturated.y);
-        *my_pixels++ = colorToInt(saturated.x);
-        *my_pixels++ = 255;
+//        vec3 saturated = saturateColor(res);
+//        *my_pixels++ = colorToInt(saturated.z);
+//        *my_pixels++ = colorToInt(saturated.y);
+//        *my_pixels++ = colorToInt(saturated.x);
+//        *my_pixels++ = 255;
         ray += dx;
       }
     } else {
@@ -226,6 +237,57 @@ void SoftwareRenderer::drawThread(int id) {
     yray += dy;
   }
   screen_measure_[id] = total * multiplier_;
+}
+
+void SoftwareRenderer::postprocess() {
+  int num_frames = frame_ - base_frame_;
+  double one_mul = 1. / num_frames / multiplier_;
+
+  for (int i = 0; i < window_width_ * window_height_; i++) {
+    vec3 res = BasePoint<float>::convert(fppixels_[i] * one_mul);
+    pp_fppixels_[i] = res;
+  }
+//  for (int y = 0; y < window_height_; y++) {
+//    for (int x = 0; x < window_width_; x++) {
+//      vec3 res = BasePoint<float>::convert(fppixels_[y * window_width_ + x] * one_mul);
+//      float sum = res.x + res.y + res.z;
+//      if (sum < 6) {
+//        continue;
+//      }
+//      sum /= 3 * 200;
+//      float fade = 0.90;
+//      int n = (log(1./256/16) - log(sum)) / log(fade);
+////      printf("%d %f\n", n, sum);
+//      float mul = 0.005;
+//      for (int i = x+1; i < std::min(window_width_, x+n); i++) {
+//        pp_fppixels_[y * window_width_ + i] += res * mul;
+//        mul *= fade;
+//      }
+//      mul = 0.005;
+//      for (int i = x-1; i >= std::max(0, x-n); i--) {
+//        pp_fppixels_[y * window_width_ + i] += res * mul;
+//        mul *= fade;
+//      }
+//       mul = 0.005;
+//      for (int i = y+1; i < std::min(window_height_, y+n); i++) {
+//        pp_fppixels_[i * window_width_ + x] += res * mul;
+//        mul *= fade;
+//      }
+//      mul = 0.005;
+//      for (int i = y-1; i >= std::max(0, y-n); i--) {
+//        pp_fppixels_[i * window_width_ + x] += res * mul;
+//        mul *= fade;
+//      }
+//    }
+//  }
+  for (int i = 0; i < window_width_ * window_height_; i++) {
+    vec3 res = pp_fppixels_[i];
+    vec3 saturated = saturateColor(res);
+    pixels_[i*4] = colorToInt(saturated.z);
+    pixels_[i*4+1] = colorToInt(saturated.y);
+    pixels_[i*4+2] = colorToInt(saturated.x);
+    pixels_[i*4+3] = 255;
+  }
 }
 
 void SoftwareRenderer::worker(int id) {
@@ -282,6 +344,7 @@ void SoftwareRenderer::draw() {
     std::unique_lock<std::mutex> lk(m_);
     cv_.wait(lk, [this]{return num_running_ == 0;});
   }
+  postprocess();
   float total = 0;
   for (double m : screen_measure_) {
     total += m;

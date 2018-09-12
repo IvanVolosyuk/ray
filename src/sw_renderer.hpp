@@ -27,6 +27,7 @@ class SoftwareRenderer : public Renderer {
   private:
   void drawThread(int id);
   void worker(int id);
+  void postprocess();
 
   SDL_Renderer *renderer_ = nullptr;
   SDL_Texture * texture_ = nullptr;
@@ -41,7 +42,11 @@ class SoftwareRenderer : public Renderer {
   bool die_ = false;
   int num_running_ = 0;
   BasePoint<double>* fppixels_;
+  vec3* pp_fppixels_;
+  vec3* pp_fppixels2_;
+
   Uint8* pixels_;
+
   int numCPU_ = 0;
   int window_width_;
   int window_height_;

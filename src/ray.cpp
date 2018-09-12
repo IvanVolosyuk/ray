@@ -54,9 +54,9 @@ std::unique_ptr<Texture> floor_tex;
 int main(int argc, char** argv) {
     SDL_Event event;
 
-    wall_tex = Texture::Load("TexturesCom_StoneWall3_2x2_1024", 0.03125);
-    ceiling_tex = Texture::Load("TexturesCom_Concrete_Ceiling_1K", 0.015625);
-    floor_tex = Texture::Load("TexturesCom_Wood_ParquetStrip_1K", 0.125);
+    wall_tex = Texture::Load("TexturesCom_StoneWall3_2x2_1024", 0.5, 0.7);
+    ceiling_tex = Texture::Load("TexturesCom_Concrete_Ceiling_1K", 0.065, 0.5);
+    floor_tex = Texture::Load("TexturesCom_Wood_ParquetStrip_1K", 4, 0.83);
 
     if (SDL_Init( SDL_INIT_VIDEO) < 0) {
       std::cerr << "Init failed: " << SDL_GetError() << std::endl;
@@ -222,6 +222,20 @@ G       = Switch Sofware / OpenGL renderer
                                renderer->reset_accumulate();
                                SoftwareRenderer::adjust(window_width/2, window_height/2,
                                    window_width, window_height, 1);
+                             }
+                             break;
+                           case SDL_SCANCODE_U:
+                             if (event.key.state != SDL_PRESSED) {
+                               renderer->reset_accumulate();
+                               SoftwareRenderer::adjust(window_width/2, window_height/2,
+                                   window_width, window_height, 9);
+                             }
+                             break;
+                           case SDL_SCANCODE_I:
+                             if (event.key.state != SDL_PRESSED) {
+                               renderer->reset_accumulate();
+                               SoftwareRenderer::adjust(window_width/2, window_height/2,
+                                   window_width, window_height, 10);
                              }
                              break;
                            case SDL_SCANCODE_MINUS:

@@ -34,10 +34,11 @@ void LoadImage(const std::string& path,
 
 }  // namespace
 
-std::unique_ptr<Texture> Texture::Load(const std::string& prefix, float exp) {
+std::unique_ptr<Texture> Texture::Load(const std::string& prefix, float exp, float diff) {
   auto t = std::make_unique<Texture>();
   t->width = t->height = -1;
-  t->exp = exp;
+  t->specular_exponent_ = exp;
+  t->diffuse_ammount_ = diff;
 
   LoadImage(prefix + "_albedo.png", &t->albedo, &t->width, &t->height, false);
   LoadImage(prefix + "_normal.png", &t->normals, &t->width, &t->height, false);
@@ -45,7 +46,7 @@ std::unique_ptr<Texture> Texture::Load(const std::string& prefix, float exp) {
   return t;
 }
 
-std::tuple<vec3,vec3,float> Texture::Get(float x, float y, vec3 normal) {
+std::tuple<vec3,vec3,float,float> Texture::Get(float x, float y, vec3 normal) {
     y = y - floor(y);
     if (isnan(y)) y = 0;
     x -= floor(x);
@@ -73,6 +74,6 @@ std::tuple<vec3,vec3,float> Texture::Get(float x, float y, vec3 normal) {
       n.y *= -normal.y;
     }
     float r = roughness[pos];
-    float specular_exponent = 1 + exp * (256 - r);
-    return std::make_tuple(color, n, specular_exponent);
+    float specular_exponent = 1 + specular_exponent_ * (256 - r);
+    return std::make_tuple(color, n, specular_exponent, diffuse_ammount_);
 }
