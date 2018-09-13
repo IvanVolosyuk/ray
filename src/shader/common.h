@@ -46,8 +46,8 @@ struct Ball {
   vec3 color_;
   Material material_;
 } balls[3] = {
- { vec3(-1, -3, ball_size), vec3(1, 1, 1), {0.03, 500000}},
- { vec3(-3,  0, ball_size), vec3(1.00, 0.71, 0.00), {0.03, 500000}},
+ { vec3(-1, -3, ball_size), vec3(1, 1, 1), {0.05, 500000}},
+ { vec3(-3,  0, ball_size), vec3(1.00, 0.71, 0.00), {0.05, 500000}},
  { vec3( 2,  0, ball_size), vec3(0.56, 0.56, 0.56), {0.05, 256}}
 };
 
@@ -86,7 +86,8 @@ int max_internal_reflections = 30;
 // Glass refraction index
 float glass_refraction_index = 1.492; //1.458;
 
-float FresnelReflectAmount (float n1, float n2, vec3 normal, vec3 incident);
+vec3 refract(float ior, vec3 N, vec3 I);
+float fresnel(float ior, vec3 N, vec3 I);
 Hit ball_hit(in int id, in vec3 norm_ray, in vec3 origin);
 RoomHit room_hit(in vec3 norm_ray, in vec3 origin);
 Hit light_hit(in vec3 norm_ray, in vec3 origin);

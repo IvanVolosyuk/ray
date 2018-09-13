@@ -13,9 +13,8 @@ void LoadImage(const std::string& path,
     bool expected_alpha) {
   int img_width;
   int img_height;
-  bool img_alpha;
   bool res = loadPngImage(path.c_str(),
-        &img_width, &img_height, &img_alpha, bytes);
+        &img_width, &img_height, bytes);
   if (!res) {
     std::cerr << "Fail to load image: " << path << std::endl;
     std::exit(1);
@@ -24,9 +23,9 @@ void LoadImage(const std::string& path,
     *width = img_width;
     *height = img_height;
   } else {
-    if (img_width != *width || img_height != *height || expected_alpha != img_alpha) {
+    if (img_width != *width || img_height != *height) {
       std::cout << "Unexpected image: " << path << " "
-        << img_width << "x" << img_height << " " << img_alpha;
+        << img_width << "x" << img_height << std::endl;
       std::exit(1);
     }
   }
@@ -74,6 +73,6 @@ std::tuple<vec3,vec3,float,float> Texture::Get(float x, float y, vec3 normal) {
       n.y *= -normal.y;
     }
     float r = roughness[pos];
-    float specular_exponent = 1 + specular_exponent_ * (256 - r);
-    return std::make_tuple(color, n, specular_exponent, diffuse_ammount_);
+    return std::make_tuple(color, n, specular_exponent_,
+        diffuse_ammount_ + (1-diffuse_ammount_) * r / 255.f);
 }

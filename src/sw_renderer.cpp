@@ -313,6 +313,13 @@ void SoftwareRenderer::worker(int id) {
 }
 
 void SoftwareRenderer::draw() {
+  auto inp = normalize(vec3(0,-1,-1));
+  auto v = refract(1.9, vec3(0,0,1), inp);
+  assert(v.x == 0);
+  assert(v.size2() > 0.999 && v.size2() < 1.001);
+  assert(std::abs(inp.y/v.y - 1.9) < 0.00001);
+
+
 //  vec3 xmin = vec3(100, 100, 100), xmax = vec3(-100, -100, -100);
 //  vec3 sz = vec3(ball_size, ball_size, ball_size);
 //  for (int i = 0; i < LENGTH(balls); i++) {

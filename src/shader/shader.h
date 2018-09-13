@@ -2,27 +2,39 @@
 
 //float OBJECT_REFLECTIVITY = 0;
 
-float FresnelReflectAmount (float n1, float n2, vec3 normal, vec3 incident) {
-  // Schlick aproximation
-  float r0 = (n1-n2) / (n1+n2);
-  r0 *= r0;
-  float cosX = -dot(normal, incident);
-  if (n1 > n2)
-  {
-    float n = n1/n2;
-    float sinT2 = n*n*(1.0-cosX*cosX);
-    // Total internal reflection
-    if (sinT2 > 1.0)
-      return 1.0;
-    cosX = sqrt(1.0-sinT2);
-  }
-  float x = 1.0-cosX;
-  float ret = r0+(1.0-r0)*x*x*x*x*x;
+// https://www.scratchapixel.com/lessons/3d-basic-rendering/introduction-to-shading/reflection-refraction-fresnel
+vec3 refract(float ior, vec3 N, vec3 I) { 
+  float cosi = std::clamp(dot(I, N), -1.f, 1.f); 
+  float etai = 1, etat = ior; 
+  vec3 n = N; 
+  if (cosi < 0) { cosi = -cosi; } else { std::swap(etai, etat); n= -N; } 
+  float eta = etai / etat; 
+  float k = 1 - eta * eta * (1 - cosi * cosi); 
+  assert(k >= 0);
+  return normalize(I * eta + n * (eta * cosi - sqrtf(k))); 
+} 
 
-  // adjust reflect multiplier for object reflectivity
-//  ret = (OBJECT_REFLECTIVITY + (1.0-OBJECT_REFLECTIVITY) * ret);
-  return ret;
-}
+float fresnel(float ior, vec3 N, vec3 I) { 
+  float cosi = std::clamp(dot(I, N), -1.f, 1.f); 
+  float etai = 1, etat = ior; 
+  float kr;
+  if (cosi > 0) { std::swap(etai, etat); } 
+  // Compute sini using Snell's law
+  float sint = etai / etat * sqrtf(std::max(0.f, 1 - cosi * cosi)); 
+  // Total internal reflection
+  if (sint >= 1) { 
+    kr = 1; 
+  } else { 
+    float cost = sqrtf(std::max(0.f, 1 - sint * sint)); 
+    cosi = fabsf(cosi); 
+    float Rs = ((etat * cosi) - (etai * cost)) / ((etat * cosi) + (etai * cost)); 
+    float Rp = ((etai * cosi) - (etat * cost)) / ((etai * cosi) + (etat * cost)); 
+    kr = (Rs * Rs + Rp * Rp) / 2; 
+  } 
+  // As a consequence of the conservation of energy, transmittance is given by:
+  // kt = 1 - kr;
+  return kr;
+} 
 
 Hit ball_hit(in int id, in vec3 norm_ray, in vec3 origin) {
   vec3 ball_vector = balls[id].position_ - origin;

@@ -106,31 +106,28 @@ vec3 CURR(trace_ball0_internal)(
     HW(in) vec3 origin,
     HW(in) float distance_from_eye) {
 #ifdef NEXT
-  float attenuation = 1;
   for (int i = 0; i < max_internal_reflections; i++) {
     vec3 ball_vector = balls[0].position_ - origin;
     float closest_point_distance_from_viewer = dot(norm_ray, ball_vector);
     float distance_from_origin = 2 * closest_point_distance_from_viewer;
     vec3 intersection = origin + norm_ray * distance_from_origin;
     vec3 distance_from_ball_vector = intersection - balls[0].position_;
-    vec3 normal = distance_from_ball_vector * ball_inv_size;
+    vec3 normal = normalize(distance_from_ball_vector);
+    intersection = balls[0].position_ + normal * ball_size;
 
-    if (reflect_gen(SW(gen)) < FresnelReflectAmount(glass_refraction_index, 1, normal, norm_ray)) {
+    if (reflect_gen(SW(gen)) < fresnel(glass_refraction_index, normal, norm_ray)) {
       vec3 ray_reflection = norm_ray - normal * (2 * dot(norm_ray, normal));
+      assert(ray_reflection.size2() > 0.99 && ray_reflection.size2() < 1.01);
       // Restart from new point
       norm_ray = ray_reflection;
       origin = intersection;
+//      origin = balls[0].position_ + normalize(origin - balls[0].position_) * ball_size;
+//      assert((origin - balls[0].position_).size2() > 0.99*ball_size2 && (origin - balls[0].position_).size2() < 1.01*ball_size2);
       distance_from_eye += distance_from_origin;
-      attenuation *= 0.9;
       continue;
     } else {
-      // refract
-      float cosi = dot(normal, norm_ray);
-      normal = -normal;
-      float eta = glass_refraction_index;
-      float k = 1 - eta * eta * (1 - cosi * cosi);
-      vec3 refracted_ray_norm = normalize(norm_ray * eta  + normal * (eta * cosi - sqrt(k)));
-      return NEXT(trace)(refracted_ray_norm, intersection, distance_from_eye + distance_from_origin) * attenuation;
+      vec3 refracted_ray_norm = refract(glass_refraction_index, normal, norm_ray);
+      return NEXT(trace)(refracted_ray_norm, intersection, distance_from_eye + distance_from_origin);
     }
   }
 #endif
@@ -163,13 +160,7 @@ vec3 CURR(make_refraction)(
     vec3 normal,
     vec3 intersection,
     float distance_from_eye) {
-  // FIXME: use refract
-  float cosi = -dot(normal, norm_ray);
-  // FIXME: hack
-  if (cosi < 0) return vec3(0);
-  float eta = 1.f/glass_refraction_index;
-  float k = 1 - eta * eta * (1 - cosi * cosi);
-  vec3 refracted_ray_norm = normalize(norm_ray * eta  + normal * (eta * cosi - sqrt(k)));
+  vec3 refracted_ray_norm = refract(glass_refraction_index, normal, norm_ray);
   return CURR(trace_ball0_internal)(
       refracted_ray_norm,
       intersection,
@@ -194,7 +185,7 @@ vec3 CURR(ball_trace) (
     return CURR(make_reflection)(ball.color_, ball.material_, norm_ray, normal, intersection, total_distance);
   }
 
-  float reflect_ammount = FresnelReflectAmount(1, glass_refraction_index, normal, norm_ray);
+  float reflect_ammount = fresnel(glass_refraction_index, normal, norm_ray);
 
 
 #ifdef MAX_STAGE

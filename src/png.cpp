@@ -8,7 +8,7 @@
 #include "png.hpp"
 #include <string.h>
 
-bool loadPngImage(const char *name, int* outWidth, int* outHeight, bool* outHasAlpha, std::vector<unsigned char>* outData) {
+bool loadPngImage(const char *name, int* outWidth, int* outHeight, std::vector<unsigned char>* outData) {
   png_structp png_ptr;
   png_infop info_ptr;
   unsigned int sig_read = 0;
