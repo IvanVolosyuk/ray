@@ -34,7 +34,7 @@ struct Box {
 
 
 float light_power = 100.4f;
-vec3 light_pos = vec3(-4.2, -3, 2);
+vec3 light_pos = vec3(-5.0, -8, 3.0);
 vec3 light_color = vec3(light_power, light_power, light_power);
 
 float ball_size = 0.9f;
@@ -197,20 +197,8 @@ std::uniform_real_distribution<float> lense_gen_r{0,1};
 std::uniform_real_distribution<float> lense_gen_a{0,2 * M_PI};
 std::uniform_real_distribution<float> reflect_gen{0.f, 1.f};
 
-std::normal_distribution<float> wall_gen{0, 1};
 std::uniform_real_distribution<float> light_gen{-1, 1};
 std::uniform_real_distribution<float> antialiasing{-0.5,0.5};
-
-vec3 wall_distr(float scattering) {
-  auto d = []() {
-    return wall_gen(gen);
-  };
-
-  return vec3(
-      d() * scattering,
-      d() * scattering,
-      d() * scattering);
-}
 
 vec3 light_distr() {
   while (true) {

@@ -73,6 +73,6 @@ std::tuple<vec3,vec3,float,float> Texture::Get(float x, float y, vec3 normal) {
       n.y *= -normal.y;
     }
     float r = roughness[pos];
-    return std::make_tuple(color, n, specular_exponent_,
-        diffuse_ammount_ + (1-diffuse_ammount_) * r / 255.f);
+    return std::make_tuple(color, n, 1 + specular_exponent_ * (256 - r),
+        diffuse_ammount_);
 }

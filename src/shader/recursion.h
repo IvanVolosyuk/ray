@@ -90,7 +90,8 @@ vec3 CURR(compute_light) (
 //    (angle * specular / (total_distance * total_distance + 1e-12f) * m.diffuse_attenuation_);
   
   // FIXME: should angle be only used for diffuse color?
-  vec3 reflected_light = (color * light_color) * m.diffuse_ammount_ + light_color * (1-m.diffuse_ammount_) * specular;
+  vec3 reflected_light = (color * light_color) * m.diffuse_ammount_
+    + (specular_color * light_color) * (1-m.diffuse_ammount_) * specular;
   vec3 diffuse_color = reflected_light * (angle / (total_distance * total_distance + 1e-12f));
   assert(diffuse_color.x >= 0);
   assert(diffuse_color.y >= 0);
@@ -243,7 +244,7 @@ vec3 CURR(room_trace) (
 
   return CURR(compute_light)(
       color,
-      vec3(1,1,1),
+      color,
       material,
       normal,
       norm_ray,
