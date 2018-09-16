@@ -1,6 +1,8 @@
 #ifndef __SOFTWARE_H__
 #define __SOFTWARE_H__ 1
 
+#define MAX_FLOAT 1e37
+
 #ifdef USE_HW
 // Hardware mode
 
@@ -8,6 +10,11 @@
 #define SW(x)
 #define LENGTH(a) a.length()
 #define size_t int
+#define assert(x)
+#define isfinite(x) (!isnan(x))
+#define M_PI 3.14159265358979323846264
+#define swap(a,b) { float x = a; a = b; b = x; }
+
 
 
 #else  // not USE_HW
@@ -28,6 +35,7 @@ inline float inversesqrt(float a) { return 1./sqrtf(a); }
 #define SW(x) x
 
 #define sqrt(x) sqrtf(x)
+#define abs(x) fabs(x)
 #define in const
 #define Hit(a,b,c) Hit{a,b,c}
 #define RoomHit(a,b,c,d) RoomHit{a,b,c,d}

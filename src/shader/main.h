@@ -15,7 +15,6 @@ void main () {
   float x = (float(pixel_coords.x * 2 - dims.x) / dims.x);
   float y = (float(pixel_coords.y * 2 - dims.y) / dims.y);
 
-  seed0 = frame_num;
 
   vec3 xoffset = sight_x * fov;
   vec3 yoffset = -sight_y * (fov * dims.y / dims.x);
@@ -24,11 +23,13 @@ void main () {
 
   vec3 ray = sight + xoffset * x + yoffset * y ;
   vec3 origin = viewer;
-  seed0 = floatBitsToInt(origin.x) + irand2().x;
-  seed0 = floatBitsToInt(origin.y) + irand2().y;
-  seed0 = floatBitsToInt(ray.x) + irand2().y;
-  seed0 = floatBitsToInt(ray.y) + irand2().x;
-  seed0 = floatBitsToInt(ray.z) + irand2().y;
+//  seed0 = frame_num;
+//  seed0 = tea(floatBitsToInt(origin.x), seed0);
+//  seed0 = tea(floatBitsToInt(origin.y), seed0);
+//  seed0 = tea(floatBitsToInt(ray.x), seed0);
+//  seed0 = tea(floatBitsToInt(ray.y), seed0);
+//  seed0 = tea(floatBitsToInt(ray.z), seed0);
+  seed0 = tea(pixel_coords.y * dims.x + pixel_coords.x, frame_num);
 
 
   for (int xx = 0; xx < x_batch; xx++) {
@@ -41,7 +42,7 @@ void main () {
       vec3 focused_ray = (ray + dx * antialiasing(i) + dy * antialiasing(i));
       vec3 focused_point = origin + focused_ray * focused_distance;
       float r = lense_gen_r(0);
-      float a = lense_gen_a(0) * 1 * PI;
+      float a = lense_gen_a(0) * 1 * M_PI;
       vec3 me = origin + sight_x * (r * cos(a)) + sight_y * (r * sin(a));
       vec3 new_ray = normalize(focused_point - me);
       if (max_depth > 1) {

@@ -24,7 +24,7 @@ vec3 CURR(compute_light) (
   vec3 total_color = black;
 
 #ifdef NEXT
-  float r = reflect_gen(HW(origin)SW(gen));
+  float r = reflect_gen(SW(gen));
   if (r < m.diffuse_ammount_) {
     vec3 second_ray_dir = scatter(reflection, 0);
     float angle = dot(second_ray_dir, normal);
@@ -74,7 +74,7 @@ vec3 CURR(compute_light) (
   float specular = 0;
   if (a > 0) {
     // Clamp
-    a = std::min(a, 1.f);
+    a = min(a, 1.f);
 
     assert(isfinite(a));
     assert(isfinite(m.specular_exponent_));
@@ -225,6 +225,7 @@ vec3 CURR(room_trace) (
   Material material = room_material;
   vec3 normal = p.normal;
   vec3 reflection = p.reflection;
+#ifndef USE_HW
   std::tuple<vec3,vec3,float,float> tex_lookup;
 
   // Hack for bumpmap for floor
@@ -240,6 +241,13 @@ vec3 CURR(room_trace) (
   normal = std::get<1>(tex_lookup);
   material.specular_exponent_ = std::get<2>(tex_lookup);
   material.diffuse_ammount_ = std::get<3>(tex_lookup);
+#else
+  if (intersection.z < 0.01) {
+    color = fract(
+        (floor(intersection.x + 10) +
+         floor(intersection.y + 10)) * 0.5) == 0 ? vec3(0.1, 0.1, 0.1) : vec3(1,1,1);
+  }
+#endif
   reflection = norm_ray - normal * (dot(norm_ray, normal) * 2);
 
   return CURR(compute_light)(
@@ -254,26 +262,6 @@ vec3 CURR(room_trace) (
       p.min_dist);
 }
 
-vec3 CURR(sine_trace)(
-    in SineHit hit,
-    vec3 norm_ray,
-    vec3 origin,
-    float distance_from_eye) {
-  vec3 normal = normalize(hit.point - hit.center);
-  vec3 ray_reflection = norm_ray - normal * (2 * dot(norm_ray, normal));
-  return CURR(compute_light)(
-      vec3(1, 1, 1), //color
-      vec3(1,1,1),
-      {0, 1}, // material
-      normal,
-      norm_ray,
-      ray_reflection,
-      hit.point,
-      false,
-      distance_from_eye + hit.closest_point_distance_from_viewer_);
-}
-
-
 vec3 CURR(trace_all) (
     in vec3 norm_ray,
     in vec3 origin,
@@ -284,18 +272,10 @@ vec3 CURR(trace_all) (
   Hit hit = bbox_hit(norm_ray, origin);
 
   Hit light = light_hit(norm_ray, origin);
-//  SineHit sine = sine_hit(norm_ray, origin);
-//  if (sine.closest_point_distance_from_viewer_ < light.closest_point_distance_from_viewer_) {
-//    if (sine.closest_point_distance_from_viewer_ <
-//        hit.closest_point_distance_from_viewer_) {
-//      return CURR(sine_trace)(sine, norm_ray, origin, distance_from_eye);
-//    }
-//  } else {
-    if (light.closest_point_distance_from_viewer_ <
-        hit.closest_point_distance_from_viewer_) {
-      return light_trace(light, norm_ray, origin, distance_from_eye);
-    }
-//  }
+  if (light.closest_point_distance_from_viewer_ <
+      hit.closest_point_distance_from_viewer_) {
+    return light_trace(light, norm_ray, origin, distance_from_eye);
+  }
 
   if (hit.id_ < 0) {
     return CURR(room_trace)(norm_ray, origin, distance_from_eye);
