@@ -96,9 +96,7 @@ uint k2 = 0xAD90777D;
 uint k3 = 0x7E95761E;
 uint sum = 0x9e3779b9;
 
-ivec2 irand2() {
-  uint v0 = seed0;
-  uint v1 = seq++;
+uint tea(uint v0, uint v1) {
   v0 +=((v1 << 4)+k0) ^ (v1 + sum) ^ ((v1 >> 5)+k1);
   v1 +=((v0 << 4)+k2) ^ (v0 + sum) ^ ((v0 >> 5)+k3);
   v0 +=((v1 << 4)+k0) ^ (v1 + sum) ^ ((v1 >> 5)+k1);
@@ -107,27 +105,22 @@ ivec2 irand2() {
   v1 +=((v0 << 4)+k2) ^ (v0 + sum) ^ ((v0 >> 5)+k3);
   v0 +=((v1 << 4)+k0) ^ (v1 + sum) ^ ((v1 >> 5)+k1);
   v1 +=((v0 << 4)+k2) ^ (v0 + sum) ^ ((v0 >> 5)+k3);
-  return ivec2 (v0, v1);
+  return v0;
+}
+
+// https://en.wikipedia.org/wiki/Linear_congruential_generator
+uint LCG_mul = 1664525;
+uint LCG_incr = 1013904223;
+uint LCG_mask = 0xFFFFFF; // 24 lower bits
+float LCG_normalizer = 5.960464477539063e-08f;//1.f/(float)LCG_mask;
+
+float rand() {
+  seed0 = seed0 * LCG_mul + LCG_incr;
+  return (seed0 & LCG_mask) * LCG_normalizer;
 }
 
 vec2 rand2() {
-  uint v0 = seed0;
-  uint v1 = seq++;
-  v0 +=((v1 << 4)+k0) ^ (v1 + sum) ^ ((v1 >> 5)+k1);
-  v1 +=((v0 << 4)+k2) ^ (v0 + sum) ^ ((v0 >> 5)+k3);
-  v0 +=((v1 << 4)+k0) ^ (v1 + sum) ^ ((v1 >> 5)+k1);
-  v1 +=((v0 << 4)+k2) ^ (v0 + sum) ^ ((v0 >> 5)+k3);
-  v0 +=((v1 << 4)+k0) ^ (v1 + sum) ^ ((v1 >> 5)+k1);
-  v1 +=((v0 << 4)+k2) ^ (v0 + sum) ^ ((v0 >> 5)+k3);
-  v0 +=((v1 << 4)+k0) ^ (v1 + sum) ^ ((v1 >> 5)+k1);
-  v1 +=((v0 << 4)+k2) ^ (v0 + sum) ^ ((v0 >> 5)+k3);
-  float fv0 = float(v0 >> 2);
-  float fv1 = float(v1 >> 2);
-  return vec2 (fv0 / 1073741824.f, fv1 / 1073741824.f);
-}
-
-float rand() {
-  return rand2().y;
+  return vec2(rand(), rand());
 }
 
 float srand() {
