@@ -145,8 +145,8 @@ vec2 normal_rand() {
 }
 
 vec3 wall_distr(float scattering) {
-  vec2 n1 = normal_rand(pos.z, pos.x);
-  vec2 n2 = normal_rand(pos.y, pos.y);
+  vec2 n1 = normal_rand();
+  vec2 n2 = normal_rand();
   return vec3 (
       n1.x * scattering,
       n2.x * scattering,
@@ -165,15 +165,15 @@ vec3 light_distr() {
 }
 
 float lense_gen_r(in float a) {
-  return sqrt(rand(a)) * lense_blur;
+  return sqrt(rand()) * lense_blur;
 }
 
 float lense_gen_a(in float a) {
-  return rand(a) * 2 * PI;
+  return rand() * 2 * PI;
 }
 
 float antialiasing(in float c) {
-  return srand(c) * 0.5;
+  return srand() * 0.5;
 }
 
 float reflect_gen() {

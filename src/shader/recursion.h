@@ -168,7 +168,7 @@ vec3 CURR(ball_trace) (
           intersection,
           distance_from_origin) * (1 - reflect_ammount);
 #else
-  if (reflect_ammount > reflect_gen(HW(origin)SW(gen))) {
+  if (reflect_ammount > reflect_gen(SW(gen))) {
     return CURR(make_reflection)(ball.color_, ball.material_, norm_ray, normal, intersection, distance_from_origin);
   } else {
     return CURR(make_refraction)(norm_ray, normal, intersection, distance_from_origin);

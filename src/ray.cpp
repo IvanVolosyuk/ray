@@ -191,14 +191,11 @@ G       = Switch Sofware / OpenGL renderer
                              break;
                            case SDL_SCANCODE_7:
                              if (event.key.state != SDL_PRESSED) renderer->reset_accumulate();
-                             wall_distribution = 0.01;
                              break;
                            case SDL_SCANCODE_8:
-                             wall_distribution = 0.1;
                              if (event.key.state != SDL_PRESSED) renderer->reset_accumulate();
                              break;
                            case SDL_SCANCODE_9:
-                             wall_distribution = 0.5;
                              if (event.key.state != SDL_PRESSED) renderer->reset_accumulate();
                              break;
                            case SDL_SCANCODE_MINUS:
