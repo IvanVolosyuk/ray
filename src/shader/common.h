@@ -193,6 +193,8 @@ float reflect_gen() {
 #else  // SW
 std::random_device rd;
 std::mt19937 gen(rd());
+// FIXME: use tee for seed and Linear congruential generator for intermidiate randoms
+// FIXME: use aabb fast ray intersection, construct nested bounding boxes
 std::uniform_real_distribution<float> lense_gen_r{0,1};
 std::uniform_real_distribution<float> lense_gen_a{0,2 * M_PI};
 std::uniform_real_distribution<float> reflect_gen{0.f, 1.f};

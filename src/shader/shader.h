@@ -4,10 +4,10 @@
 
 // https://www.scratchapixel.com/lessons/3d-basic-rendering/introduction-to-shading/reflection-refraction-fresnel
 vec3 refract(float ior, vec3 N, vec3 I) { 
-  float cosi = std::clamp(dot(I, N), -1.f, 1.f); 
+  float cosi = clamp(dot(I, N), -1.f, 1.f); 
   float etai = 1, etat = ior; 
   vec3 n = N; 
-  if (cosi < 0) { cosi = -cosi; } else { std::swap(etai, etat); n= -N; } 
+  if (cosi < 0) { cosi = -cosi; } else { swap(etai, etat); n= -N; } 
   float eta = etai / etat; 
   float k = 1 - eta * eta * (1 - cosi * cosi); 
   assert(k >= 0);
@@ -15,10 +15,10 @@ vec3 refract(float ior, vec3 N, vec3 I) {
 } 
 
 float fresnel(float ior, vec3 N, vec3 I) { 
-  float cosi = std::clamp(dot(I, N), -1.f, 1.f); 
+  float cosi = clamp(dot(I, N), -1.f, 1.f); 
   float etai = 1, etat = ior; 
   float kr;
-  if (cosi > 0) { std::swap(etai, etat); } 
+  if (cosi > 0) { swap(etai, etat); } 
   // Compute sini using Snell's law
   float sint = etai / etat * sqrtf(std::max(0.f, 1 - cosi * cosi)); 
   // Total internal reflection

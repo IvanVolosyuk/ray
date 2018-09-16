@@ -35,6 +35,8 @@ inline float inversesqrt(float a) { return 1./sqrtf(a); }
 #define LENGTH(a) (sizeof(a)/sizeof(a[0]))
 using std::max;
 using std::min;
+using std::clamp;
+using std::swap;
 
 #endif  // USE_HW
 
