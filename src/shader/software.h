@@ -26,6 +26,13 @@ layout(std430, binding = N) buffer name {              \
 
 #else  // not USE_HW
 
+#define TEXTURE(N, name)                               \
+  int width_##N;                                       \
+  int height_##N;                                      \
+  float specular_exponent_##N;                         \
+  float diffuse_ammount_##N;                           \
+  unsigned int *pixels_##N;
+
 // Software mode
 #include <cmath>
 #include <functional>
@@ -45,7 +52,7 @@ inline float inversesqrt(float a) { return 1./sqrtf(a); }
 #define abs(x) fabs(x)
 #define in const
 #define Hit(a,b,c) Hit{a,b,c}
-#define RoomHit(a,b,c,d) RoomHit{a,b,c,d}
+#define RoomHit(a,b,c,d,e,f) RoomHit{a,b,c,d,e,f}
 #define SineHit(a,b,c) SineHit{a,b,c}
 #define LENGTH(a) (sizeof(a)/sizeof(a[0]))
 using std::max;

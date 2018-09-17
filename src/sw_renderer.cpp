@@ -322,6 +322,19 @@ void SoftwareRenderer::draw() {
   assert(std::abs(inp.y/v.y - 1.9) < 0.00001);
 
 
+#define EXPORT_TEXTURE(n, tex) {                 \
+ const auto& t = tex->Export();                  \
+ pixels_##n = (unsigned*)&t[16];                  \
+ width_##n = tex->width;                          \
+ height_##n = tex->height;                        \
+ specular_exponent_##n = tex->specular_exponent_; \
+ diffuse_ammount_##n = tex->diffuse_ammount_;     \
+}
+  EXPORT_TEXTURE(0, floor_tex)
+  EXPORT_TEXTURE(1, wall_tex)
+  EXPORT_TEXTURE(2, ceiling_tex)
+
+
 //  vec3 xmin = vec3(100, 100, 100), xmax = vec3(-100, -100, -100);
 //  vec3 sz = vec3(ball_size, ball_size, ball_size);
 //  for (int i = 0; i < LENGTH(balls); i++) {

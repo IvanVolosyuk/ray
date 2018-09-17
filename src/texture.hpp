@@ -13,10 +13,10 @@ class Texture {
     float specular_exponent_;
     float diffuse_ammount_;
     const std::vector<unsigned char>& Export();
-
-  private:
     int width;
     int height;
+
+  private:
     std::vector<unsigned char> albedo;
     std::vector<unsigned char> normals;
     std::vector<unsigned char> roughness;

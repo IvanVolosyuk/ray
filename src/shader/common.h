@@ -31,8 +31,8 @@ struct Box {
 } room = {vec3 (-6.0f, -9.0f, 0.0f ), vec3 (6.0f, 6.0f, 4.0f)};
 
 
-float light_power = 100.4f;
-vec3 light_pos = vec3(-5.0, -8, 3.0);
+float light_power = 200.4f;
+vec3 light_pos = vec3(5.0, -8, 3.0);
 vec3 light_color = vec3(light_power, light_power, light_power);
 
 float ball_size = 0.9f;
@@ -63,9 +63,11 @@ struct Hit {
 
 struct RoomHit {
   float min_dist;
+  vec3 intersection;
   vec3 normal;
   vec3 reflection;
   vec3 color;
+  Material material;
 };
 
 float max_distance = 1000;
@@ -198,5 +200,10 @@ vec3 light_distr() {
 }
 
 #endif  // USE_HW
+
+TEXTURE(0, floor_tex)
+TEXTURE(1, wall_tex)
+TEXTURE(2, ceiling_tex)
+
 
 #endif

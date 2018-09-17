@@ -73,6 +73,36 @@ Hit bbox_hit(in vec3 norm_ray, in vec3 origin) {
   return hit;
 }
 
+RoomHit room_hit_internal(
+    in vec3 norm_ray,
+    in vec3 origin,
+    in float min_dist,
+    in vec3 intersection,
+    in vec3 normal,
+    in vec3 U,
+    in vec3 V,
+    in uint px,
+    in uint nn,
+    in float specular_exponent,
+    in float diffuse_ammount) {
+  vec3 color;
+  color.z = float((px >> 16) & 255);
+  color.y = float((px >> 8) & 255);
+  color.x = float(px & 255);
+  color = color * (1.f/256.f);
+
+  float nx = float(nn & 255) - 128;
+  float nz = (float((nn>>8) & 255) - 128);
+  float ny = float((nn>>16) & 255) - 128;
+  vec3 n = normalize(normal * ny + U * nx + V * nz);
+  Material material;
+  material.specular_exponent_ = 1 + specular_exponent * (256 - float((px >> 24)&255));
+  material.diffuse_ammount_ = diffuse_ammount;
+  vec3 reflection = norm_ray - n * (dot(norm_ray, n) * 2);
+  assert(isfinite(min_dist));
+  return RoomHit(min_dist, intersection, n, reflection, color, material);
+}
+
 RoomHit room_hit(in vec3 norm_ray, in vec3 origin) {
   vec3 tMin = (room.a_ - origin) / norm_ray;
   vec3 tMax = (room.b_ - origin) / norm_ray;
@@ -84,37 +114,68 @@ RoomHit room_hit(in vec3 norm_ray, in vec3 origin) {
 //  float tNear = max(max(t1.x, t1.y), t1.z);
 //  float tFar = min(min(t2.x, t2.y), t2.z);
 
-  vec3 normal;
-  vec3 reflection;
   float min_dist;
-  vec3 color;
+  vec3 normal;
+  vec3 U, V;
+
+#define FINISH(N, u_expr, v_expr) {                     \
+  vec3 intersection = origin + norm_ray * min_dist;     \
+  float u = (u_expr);                                   \
+  float v = (v_expr);                                   \
+  u = u - floor(u);                                     \
+  v = v - floor(v);                                     \
+  uint dx = uint(width_##N * u);                        \
+  uint dy = uint(height_##N * v);                       \
+  uint idx = (dx + dy * width_##N) * 2;                 \
+  uint px = pixels_##N[idx];                            \
+  uint nn = pixels_##N[idx + 1];                        \
+  return room_hit_internal(                             \
+      norm_ray,                                         \
+      origin,                                           \
+      min_dist,                                         \
+      intersection,                                     \
+      normal,                                           \
+      U, V,                                             \
+      px, nn,                                           \
+      specular_exponent_##N,                            \
+      diffuse_ammount_##N);                             \
+}
 
   if (t2.y < t2.z) {
-    color = wall_color;
     if (t2.x < t2.y) {
       min_dist = t2.x;
-      reflection = vec3(-norm_ray.x, norm_ray.y, norm_ray.z);
-      normal = vec3(sign(reflection.x), 0, 0);
+      normal = vec3(sign(-norm_ray.x), 0, 0);
+      U = vec3(0, 1, 0);
+      V = vec3(0, 0, 1);
+      FINISH(1, (intersection.x + intersection.y) * 0.5f, intersection.z * 0.5f);
     } else {
       min_dist = t2.y;
-      reflection = vec3(norm_ray.x, -norm_ray.y, norm_ray.z);
-      normal = vec3(0, sign(reflection.y), 0);
+      normal = vec3(0, sign(-norm_ray.y), 0);
+      U = vec3(1, 0, 0);
+      V = vec3(0, 0, 1);
+      FINISH(1, (intersection.x + intersection.y) * 0.5f, intersection.z * 0.5f);
     }
   } else {
     if (t2.x < t2.z) {
       min_dist = t2.x;
-      reflection = vec3(-norm_ray.x, norm_ray.y, norm_ray.z);
-      normal = vec3(sign(reflection.x), 0, 0);
-      color = wall_color;
+      normal = vec3(sign(-norm_ray.x), 0, 0);
+      U = vec3(0, 1, 0);
+      V = vec3(0, 0, 1);
+      FINISH(1, (intersection.x + intersection.y) * 0.5f, intersection.z * 0.5f);
     } else {
       min_dist = t2.z;
-      reflection = vec3(norm_ray.x, norm_ray.y, -norm_ray.z);
-      normal = vec3(0, 0, sign(reflection.z));
-      color = reflection.z < 0 ? ceiling_color : floor_color;
+      normal = vec3(0, 0, sign(-norm_ray.z));
+      if (norm_ray.z > 0) {
+        U = vec3(1, 0, 0);
+        V = vec3(0, 1, 0);
+        FINISH(2, intersection.x * 0.2f, intersection.y * 0.2f);
+      } else {
+        U = vec3(1, 0, 0);
+        V = vec3(0, 1, 0);
+        FINISH(0, intersection.x * 0.2f, intersection.y * 0.2f);
+      }
     }
   }
-  assert(isfinite(min_dist));
-  return RoomHit(min_dist, normal, reflection, color);
 }
 
 Hit light_hit(in vec3 norm_ray, in vec3 origin) {

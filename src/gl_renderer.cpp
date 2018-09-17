@@ -364,7 +364,7 @@ std::unique_ptr<Renderer> OpenglRenderer::Create(int window_width, int window_he
   r->window_ = SDL_CreateWindow(
       "glray",
       SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
-      r->width_, r->height_,
+      1920, 1080,
       SDL_WINDOW_OPENGL);
 
   if (r->window_ == nullptr) {
@@ -445,7 +445,7 @@ void OpenglRenderer::draw() {
 //  glClear( GL_COLOR_BUFFER_BIT );
   glUseProgram( quad_program );
   frame_num += max_rays;
-  glUniform1f(post_processor_mul_, 1.f/(frame_num + 1));
+  glUniform1f(post_processor_mul_, 1.f/frame_num);
   glBindVertexArray( quad_vao );
   glActiveTexture( GL_TEXTURE0 );
   glBindTexture( GL_TEXTURE_2D, tex_output );
