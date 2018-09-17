@@ -12,13 +12,16 @@ class Texture {
     std::tuple<vec3,vec3,float,float> Get(float x, float y, vec3 normal);
     float specular_exponent_;
     float diffuse_ammount_;
+    const std::vector<unsigned char>& Export();
+
   private:
     int width;
     int height;
-    // FIXME: memory leak
     std::vector<unsigned char> albedo;
     std::vector<unsigned char> normals;
     std::vector<unsigned char> roughness;
+
+    std::vector<unsigned char> gl_export;
 };
 
 #endif  // __TEXTURE_H__

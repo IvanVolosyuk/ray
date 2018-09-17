@@ -309,11 +309,12 @@ G       = Switch Sofware / OpenGL renderer
       }
 
       Uint32 newTime = SDL_GetTicks();
-      fps_frames++;
       if (newTime - fps_timer > 5000) {
-        printf("FPS: %4.2f Frame Time: %.3f\n",
+        max_rays = std::max(1, (int)(fps_frames / (5000. / 50.)));
+        printf("FPS: %4.2f Frame Time: %.3f, max_rays: %d\n",
             fps_frames / (float)(newTime - fps_timer) * 1000,
-            (newTime - fps_timer) / (float)fps_frames);
+            (newTime - fps_timer) / (float)fps_frames, max_rays);
+
         fps_timer = newTime;
         fps_frames = 0;
       }
@@ -323,9 +324,8 @@ G       = Switch Sofware / OpenGL renderer
       move_left(newTime);
       move_right(newTime);
 
-//      printf("Sight_x: %f %f %f\n", sight_x.x, sight_x.y, sight_x.z);
-//      printf("Sight_y: %f %f %f\n", sight_y.x, sight_y.y, sight_y.z);
       renderer->draw();
+      fps_frames += max_rays;
     }
 exit:
     renderer.reset();

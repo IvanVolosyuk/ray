@@ -19,7 +19,6 @@
 #include <fstream>
 #include <iostream>
 
-
 using std::string;
 using std::endl;
 
@@ -254,6 +253,17 @@ struct ModelInput {
 #undef INPUT
 };
 
+void OpenglRenderer::bindTexture(int idx, Texture& tex) {
+  GLuint ssbo;
+  glGenBuffers(1, &ssbo);
+  glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo);
+  const auto& t = tex.Export();
+  glBufferData(GL_SHADER_STORAGE_BUFFER,
+      t.size(), &t[0], GL_STATIC_COPY);
+  glBindBufferBase(GL_SHADER_STORAGE_BUFFER, idx, ssbo);
+  glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0); // unbind
+}
+
 bool OpenglRenderer::setup() {
   std::ifstream t("shader.comp");
   std::string compute_shader((std::istreambuf_iterator<char>(t)),
@@ -330,6 +340,10 @@ bool OpenglRenderer::setup() {
     }
     inputs_.push_back(location);
   }
+  bindTexture(0, *floor_tex);
+  bindTexture(1, *wall_tex);
+  bindTexture(2, *ceiling_tex);
+
   glUseProgram( quad_program );
   post_processor_mul_ = glGetUniformLocation(quad_program, "mul");
   frame_num = 0;
@@ -430,13 +444,14 @@ void OpenglRenderer::draw() {
 
 //  glClear( GL_COLOR_BUFFER_BIT );
   glUseProgram( quad_program );
-  glUniform1f(post_processor_mul_, (1.f/(frame_num + 1)/max_rays));
+  frame_num += max_rays;
+  glUniform1f(post_processor_mul_, 1.f/(frame_num + 1));
   glBindVertexArray( quad_vao );
   glActiveTexture( GL_TEXTURE0 );
   glBindTexture( GL_TEXTURE_2D, tex_output );
   glDrawArrays( GL_TRIANGLE_STRIP, 0, 4 );
   SDL_GL_SwapWindow(window_);
-  frame_num++;
+
   if ((frame_num & (frame_num - 1)) == 0 && frame_num > 8) {
     printf("Frame num: %d\n", frame_num);
     fflush(stdout);

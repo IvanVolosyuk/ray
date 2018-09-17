@@ -6,6 +6,15 @@
 #ifdef USE_HW
 // Hardware mode
 
+#define TEXTURE(N, name)                               \
+layout(std430, binding = N) buffer name {              \
+  int width_##N;                                       \
+  int height_##N;                                      \
+  float specular_exponent_##N;                         \
+  float diffuse_ammount_##N;                           \
+  highp uint pixels_##N[];                             \
+};
+
 #define HW(x) x
 #define SW(x)
 #define LENGTH(a) a.length()
@@ -14,8 +23,6 @@
 #define isfinite(x) (!isnan(x))
 #define M_PI 3.14159265358979323846264
 #define swap(a,b) { float x = a; a = b; b = x; }
-
-
 
 #else  // not USE_HW
 

@@ -38,6 +38,7 @@ class SoftwareRenderer : public Renderer {
   std::mutex m_;
   std::condition_variable cv_;
   int frame_ = 0;
+  int nrays_ = 0;
   int base_frame_ = 0;
   bool die_ = false;
   int num_running_ = 0;

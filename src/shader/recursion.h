@@ -243,9 +243,47 @@ vec3 CURR(room_trace) (
   material.diffuse_ammount_ = std::get<3>(tex_lookup);
 #else
   if (intersection.z < 0.01) {
-    color = fract(
-        (floor(intersection.x + 10) +
-         floor(intersection.y + 10)) * 0.5) == 0 ? vec3(0.1, 0.1, 0.1) : vec3(1,1,1);
+    if (width_0 == 1024 && height_0 == 1024) {
+      float xx = intersection.x /5;
+      float yy = intersection.y / 5;
+      xx = xx - floor(xx);
+      yy = yy - floor(yy);
+      uint dx = uint(width_0 * xx);
+      uint dy = uint(height_0 * yy);
+      uint idx = (dx + dy * width_0) * 2;
+      uint next = width_0 * height_0;
+      uint px = pixels_0[idx];
+      uint nn = pixels_0[idx + 1];
+      color.z = float((px >> 16) & 255);
+      color.y = float((px >> 8) & 255);
+      color.x = float(px & 255);
+      color = color / 256.f;
+      vec3 n;
+      n.x = int(nn & 255) - 128;
+      n.z = int((nn>>8) & 255) - 128;
+      n.y = 128 - int((nn>>16) & 255);
+//      n.x = normals[pos*3] - 128;
+//      n.z = normals[pos*3+1] - 128;
+//      n.y = 128 - normals[pos*3+2];
+      n = normalize(n);
+      if (normal.z != 0) {
+        swap(n.y, n.z);
+        n.x *= 1;
+        n.y *= 1;
+        n.z *= -normal.z;
+      } else if (normal.x != 0) {
+        swap(n.x, n.y);
+        n.x *= -normal.x;
+      } else {
+        n.y *= -normal.y;
+      }
+      normal = n;
+      material.specular_exponent_ = 1 + specular_exponent_0 * (256 - float((px >> 24)&255));
+      material.diffuse_ammount_ = diffuse_ammount_0;
+    }
+//    color = fract(
+//        (floor(intersection.x + 10) +
+//         floor(intersection.y + 10)) * 0.5) == 0 ? vec3(0.1, 0.1, 0.1) : vec3(1,1,1);
   }
 #endif
   reflection = norm_ray - normal * (dot(norm_ray, normal) * 2);

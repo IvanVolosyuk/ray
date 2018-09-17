@@ -3,6 +3,7 @@
 
 #include <GL/glew.h>
 #include <SDL2/SDL.h>
+#include "texture.hpp"
 
 class Renderer {
   public:
@@ -18,5 +19,9 @@ class Renderer {
   protected:
   SDL_Window *window_ = nullptr;
 };
+
+extern std::unique_ptr<Texture> wall_tex;
+extern std::unique_ptr<Texture> ceiling_tex;
+extern std::unique_ptr<Texture> floor_tex;
 
 #endif  // __RENDERER_H__

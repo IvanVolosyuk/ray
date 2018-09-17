@@ -197,10 +197,6 @@ vec3 light_distr() {
   }
 }
 
-extern std::unique_ptr<Texture> wall_tex;
-extern std::unique_ptr<Texture> ceiling_tex;
-extern std::unique_ptr<Texture> floor_tex;
-
 #endif  // USE_HW
 
 #endif

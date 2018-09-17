@@ -195,39 +195,41 @@ void SoftwareRenderer::drawThread(int id) {
   BasePoint<double>* my_fppixels = fppixels_;
   int num_frames = frame_ - base_frame_;
   if ((num_frames & (num_frames - 1)) == 0 && id == 0 && num_frames > 16) {
-    printf("Num frames: %d\n", num_frames);
+    printf("Num frames: %d rays: %d\n", num_frames, nrays_);
     fflush(stdout);
   }
-  double one_mul = 1. / num_frames / multiplier_;
+  double one_mul = 1. / nrays_ / multiplier_;
 
   vec3 yray = sight - yoffset - xoffset;
   for (int y = 0; y < window_height_; y++) {
     if (y % numCPU_ == id) {
       vec3 ray = yray;
       for (int x = 0; x < window_width_; x++) {
-        // no normalize here to preserve focal plane
-        vec3 focused_ray = (ray + dx * antialiasing(gen) + dy * antialiasing(gen));
-        vec3 focused_point = viewer + focused_ray * focused_distance;
-        float r = sqrtf(lense_gen_r(gen)) * lense_blur;
-        float a = lense_gen_a(gen);
-        vec3 me = viewer + sight_x * (r * cos(a)) + sight_y * (r * sin(a));
-        vec3 new_ray = normalize(focused_point - me);
+        for (int i = 0; i < max_rays; i++) {
+          // no normalize here to preserve focal plane
+          vec3 focused_ray = (ray + dx * antialiasing(gen) + dy * antialiasing(gen));
+          vec3 focused_point = viewer + focused_ray * focused_distance;
+          float r = sqrtf(lense_gen_r(gen)) * lense_blur;
+          float a = lense_gen_a(gen);
+          vec3 me = viewer + sight_x * (r * cos(a)) + sight_y * (r * sin(a));
+          vec3 new_ray = normalize(focused_point - me);
 
-        trace_values = x == 500 && y == 500;
-        auto res = (max_depth == 0) ? trace_0(new_ray, me, 0) 
-          : ((max_depth == 1) ? trace_1(new_ray, me, 0)
-              : (max_depth == 2) ? trace_2(new_ray, me, 0)
-              : trace_3(new_ray, me, 0));
-        // accumulate
-        *my_fppixels += BasePoint<double>::convert(res);
-        res = BasePoint<float>::convert(*my_fppixels++ * one_mul);
+          trace_values = x == 500 && y == 500;
+          auto res = (max_depth == 0) ? trace_0(new_ray, me, 0) 
+            : ((max_depth == 1) ? trace_1(new_ray, me, 0)
+                : (max_depth == 2) ? trace_2(new_ray, me, 0)
+                : trace_3(new_ray, me, 0));
+          // accumulate
+          *my_fppixels += BasePoint<double>::convert(res);
+        }
+        vec3 res = BasePoint<float>::convert(*my_fppixels++ * one_mul);
         total += res.x + res.y + res.z;
 
-//        vec3 saturated = saturateColor(res);
-//        *my_pixels++ = colorToInt(saturated.z);
-//        *my_pixels++ = colorToInt(saturated.y);
-//        *my_pixels++ = colorToInt(saturated.x);
-//        *my_pixels++ = 255;
+        vec3 saturated = saturateColor(res);
+        *my_pixels++ = colorToInt(saturated.z);
+        *my_pixels++ = colorToInt(saturated.y);
+        *my_pixels++ = colorToInt(saturated.x);
+        *my_pixels++ = 255;
         ray += dx;
       }
     } else {
@@ -343,15 +345,17 @@ void SoftwareRenderer::draw() {
     // Clear accumulated image
     if (frame_ == base_frame_) {
       memset(fppixels_, 0, window_width_ * window_height_ * sizeof(BasePoint<double>));
+      nrays_ = 0;
     }
     frame_++;
+    nrays_ += max_rays;
     cv_.notify_all();
   }
   {
     std::unique_lock<std::mutex> lk(m_);
     cv_.wait(lk, [this]{return num_running_ == 0;});
   }
-  postprocess();
+//  postprocess();
   float total = 0;
   for (double m : screen_measure_) {
     total += m;

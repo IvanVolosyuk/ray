@@ -2,11 +2,13 @@
 
 #include <memory>
 #include <vector>
+#include <map>
 #include <SDL2/SDL_opengl.h>
 #include <GL/glew.h>
 
 
 #include "renderer.hpp"
+#include "texture.hpp"
 
 class OpenglRenderer : public Renderer {
   OpenglRenderer() = default;
@@ -20,9 +22,12 @@ class OpenglRenderer : public Renderer {
   virtual void reset_accumulate() override;
 
   private:
+  void bindTexture(int idx, Texture& tex);
+
   SDL_GLContext context_ = nullptr;
   int width_;
   int height_;
+  std::map<int, std::vector<unsigned char>> textures;
 
   GLuint ray_program;
   GLuint quad_vao;
