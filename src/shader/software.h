@@ -25,6 +25,7 @@ layout(std430, binding = N) buffer name {              \
 #define isfinite(x) (!isnan(x))
 #define M_PI 3.14159265358979323846264
 #define swap(a,b) { float x = a; a = b; b = x; }
+#define REF(x) inout x
 
 #else  // not USE_HW
 
@@ -53,6 +54,7 @@ inline float inversesqrt(float a) { return 1./sqrtf(a); }
 #define sqrt(x) sqrtf(x)
 #define abs(x) fabs(x)
 #define in const
+#define REF(x) x&
 #define Hit(a,b,c) Hit{a,b,c}
 #define RoomHit(a,b,c,d,e,f) RoomHit{a,b,c,d,e,f}
 #define SineHit(a,b,c) SineHit{a,b,c}

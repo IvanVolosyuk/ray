@@ -45,8 +45,8 @@ struct Ball {
   Material material_;
 } balls[3] = {
  { vec3(-1, -3, ball_size), vec3(1, 1, 1), {0.05, 500000}},
- { vec3(-3,  0, ball_size), vec3(1.00, 0.71, 0.00), {0.05, 500000}},
- { vec3( 2,  0, ball_size), vec3(0.56, 0.56, 0.56), {0.05, 256}}
+ { vec3(-3,  0, ball_size), vec3(1.00, 0.71, 0.00), {0.00, 500000}},
+ { vec3( 2,  0, ball_size), vec3(0.56, 0.56, 0.56), {0.00, 256}}
 };
 
 Box bbox = {

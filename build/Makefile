@@ -8,7 +8,7 @@ else
 LDFLAGS=-L. -lSDL2 -lGL -lSDL2 -lGLEW -lpthread -lpng
 endif
 CFLAGS+=-I../src -ggdb
-CXXFLAGS+=-I../src -ggdb -I/usr/include/SDL2 -std=c++17 -O3 -Wall -Ic:\MinGW-w64\mingw64\include -Ic:\msys64\mingw64\include -DIMGUI_IMPL_OPENGL_LOADER_GLEW -I../src/imgui
+CXXFLAGS+=-I../src -ggdb -I/usr/include/SDL2 -std=c++17 -O0 -ggdb -Wall -Ic:\MinGW-w64\mingw64\include -Ic:\msys64\mingw64\include -DIMGUI_IMPL_OPENGL_LOADER_GLEW -I../src/imgui
 OBJ=vector.o ray.o sw_renderer.o gl_renderer.o png.o texture.o imgui_demo.o imgui_draw.o imgui_widgets.o imgui.o imgui_impl_opengl3.o imgui_impl_sdl.o
 
 vpath %.cpp ../src ../src/imgui  ../src/imgui/examples
@@ -26,7 +26,7 @@ vector.o: vector.hpp
 
 gl_renderer.o: gl_renderer.hpp vector.hpp renderer.hpp input.h
 
-sw_renderer.o: sw_renderer.hpp renderer.hpp common.h shader.h software.h recursion.h stages.h input.h texture.hpp
+sw_renderer.o: sw_renderer.hpp renderer.hpp common.h shader.h software.h input.h texture.hpp
 
 png.o: png.hpp
 
@@ -37,7 +37,7 @@ texture.o: texture.hpp
 %.pp : %.h
 	gcc -DUSE_HW -E $< > $@
 
-main.pp: main.h recursion.h stages.h shader.h software.h common.h input.h png.hpp
+main.pp: main.h shader.h software.h common.h input.h png.hpp
 
 shader.comp.in: main.pp
 	sed  's/#/\/\/ GENERATED DONT EDIT/' $< > $@

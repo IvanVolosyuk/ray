@@ -215,10 +215,7 @@ void SoftwareRenderer::drawThread(int id) {
           vec3 new_ray = normalize(focused_point - me);
 
           trace_values = x == 500 && y == 500;
-          auto res = (max_depth == 0) ? trace_0(new_ray, me, 0) 
-            : ((max_depth == 1) ? trace_1(new_ray, me, 0)
-                : (max_depth == 2) ? trace_2(new_ray, me, 0)
-                : trace_3(new_ray, me, 0));
+          auto res = trace_new(new_ray, me);
           // accumulate
           *my_fppixels += BasePoint<double>::convert(res);
         }

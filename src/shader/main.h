@@ -45,19 +45,7 @@ void main () {
       float a = lense_gen_a(0) * 1 * M_PI;
       vec3 me = origin + sight_x * (r * cos(a)) + sight_y * (r * sin(a));
       vec3 new_ray = normalize(focused_point - me);
-      if (max_depth > 1) {
-        if (max_depth > 2) {
-          pixel += trace_3(new_ray, me, 0.f);
-        } else {
-          pixel += trace_2(new_ray, me, 0.f);
-        }
-      } else {
-        if (max_depth == 0) {
-          pixel += trace_0(new_ray, me, 0.f);
-        } else {
-          pixel += trace_1(new_ray, me, 0.f);
-        }
-      }
+      pixel += trace_new(new_ray, me);
     }
     imageStore (img_output, pixel_coords + ivec2(xx, 0), vec4(pixel, 1));
     ray += dx;
