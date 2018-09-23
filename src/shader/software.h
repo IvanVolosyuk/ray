@@ -20,6 +20,8 @@ layout(std430, binding = N) buffer name {              \
 #define LENGTH(a) a.length()
 #define size_t int
 #define assert(x)
+#define expf exp
+#define powf pow
 #define isfinite(x) (!isnan(x))
 #define M_PI 3.14159265358979323846264
 #define swap(a,b) { float x = a; a = b; b = x; }

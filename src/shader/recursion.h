@@ -78,7 +78,7 @@ vec3 CURR(compute_light) (
 
     assert(isfinite(a));
     assert(isfinite(m.specular_exponent_));
-    specular = pow(a, m.specular_exponent_);
+    specular = powf(a, m.specular_exponent_);
   }
   assert(isfinite(specular));
   assert(isfinite(angle));
@@ -107,6 +107,7 @@ vec3 CURR(trace_ball0_internal)(
     HW(in) vec3 origin,
     HW(in) float distance_from_eye) {
 #ifdef NEXT
+  float start_distance = distance_from_eye;
   for (int i = 0; i < max_internal_reflections; i++) {
     vec3 ball_vector = balls[0].position_ - origin;
     float closest_point_distance_from_viewer = dot(norm_ray, ball_vector);
@@ -127,8 +128,12 @@ vec3 CURR(trace_ball0_internal)(
       distance_from_eye += distance_from_origin;
       continue;
     } else {
+      distance_from_eye += distance_from_origin;
       vec3 refracted_ray_norm = refract(glass_refraction_index, normal, norm_ray);
-      return NEXT(trace)(refracted_ray_norm, intersection, distance_from_eye + distance_from_origin);
+      float td = distance_from_eye - start_distance; // travel distance
+      vec3 extinction = vec3(expf(-0.01f * td), expf(-0.01f * td), expf(-0.2f * td));
+//      vec3 extinction = vec3(0.1, 0.1, 1);
+      return NEXT(trace)(refracted_ray_norm, intersection, distance_from_eye + distance_from_origin) * extinction;
     }
   }
 #endif

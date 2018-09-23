@@ -364,7 +364,7 @@ std::unique_ptr<Renderer> OpenglRenderer::Create(int window_width, int window_he
   r->window_ = SDL_CreateWindow(
       "glray",
       SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
-      1920, 1080,
+      r->width_, r->height_,
       SDL_WINDOW_OPENGL);
 
   if (r->window_ == nullptr) {
