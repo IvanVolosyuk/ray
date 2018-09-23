@@ -15,6 +15,9 @@ class Renderer {
   virtual void draw() {}
   virtual void reset_accumulate() {}
   virtual void set_exposure_compensation(bool e) {}
+  virtual bool WantCaptureMouse() { return false; }
+  virtual bool WantCaptureKeyboard() { return false; }
+  virtual void ProcessEvent(SDL_Event* event) {};
 
   protected:
   SDL_Window *window_ = nullptr;

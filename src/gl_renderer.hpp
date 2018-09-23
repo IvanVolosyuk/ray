@@ -5,6 +5,7 @@
 #include <map>
 #include <SDL2/SDL_opengl.h>
 #include <GL/glew.h>
+#include "imgui/imgui.h"
 
 
 #include "renderer.hpp"
@@ -20,11 +21,15 @@ class OpenglRenderer : public Renderer {
   bool setup();
   void draw() override;
   virtual void reset_accumulate() override;
+  bool WantCaptureMouse() override;
+  bool WantCaptureKeyboard() override;
+  void ProcessEvent(SDL_Event* event) override;
 
   private:
   void bindTexture(int idx, Texture& tex);
 
   SDL_GLContext context_ = nullptr;
+  ImGuiIO* io_;
   int width_;
   int height_;
   std::map<int, std::vector<unsigned char>> textures;

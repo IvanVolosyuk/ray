@@ -7,6 +7,9 @@
 #include <random>
 #include <functional>
 
+#include <SDL2/SDL.h>
+#include <SDL2/SDL_main.h>
+
 #include "ray.hpp"
 #include "gl_renderer.hpp"
 #include "sw_renderer.hpp"
@@ -15,8 +18,6 @@
 #include "vector.hpp"
 #include "shader/input.h"
 
-#include <SDL2/SDL.h>
-#include <SDL2/SDL_main.h>
 
 using namespace std::placeholders;
 
@@ -122,23 +123,24 @@ G       = Switch Sofware / OpenGL renderer
       auto move_right = std::bind(apply_motion, sight_x, &ts_strafe_right, _1);
 
       while(SDL_PollEvent(&event)) {
+        renderer->ProcessEvent(&event);
         switch (event.type) {
           case SDL_QUIT:
             goto exit;
             break;
           case SDL_MOUSEBUTTONUP:
-                         if (event.button.button == SDL_BUTTON_RIGHT) {
+                         if (event.button.button == SDL_BUTTON_RIGHT && !renderer->WantCaptureMouse()) {
                            SDL_SetRelativeMouseMode(SDL_FALSE);
                            relative_motion = false;
                          }
                          break;
           case SDL_MOUSEBUTTONDOWN:
-                         if (event.button.button == SDL_BUTTON_RIGHT) {
+                         if (event.button.button == SDL_BUTTON_RIGHT && !renderer->WantCaptureMouse()) {
                            SDL_SetRelativeMouseMode(SDL_TRUE);
                            SDL_SetWindowGrab(renderer->GetWindow(), SDL_TRUE);
                            relative_motion = true;
                          }
-                         if (event.button.button == SDL_BUTTON_LEFT) {
+                         if (event.button.button == SDL_BUTTON_LEFT && !renderer->WantCaptureMouse()) {
                            if (relative_motion) {
                              printf("Focus center\n");
                              set_focus_distance(window_width / 2, window_height / 2);
@@ -161,6 +163,7 @@ G       = Switch Sofware / OpenGL renderer
                          break;
           case SDL_KEYUP:
           case SDL_KEYDOWN:
+                         if (renderer->WantCaptureKeyboard()) break;
                          auto update_key_ts = [&](Uint32* state) {
 //                           printf("State %d ts = %d\n", event.key.state, event.key.timestamp);
                            *state = (event.key.state == SDL_PRESSED) ? event.key.timestamp : 0;

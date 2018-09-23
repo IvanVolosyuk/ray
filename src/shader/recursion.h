@@ -131,7 +131,7 @@ vec3 CURR(trace_ball0_internal)(
       distance_from_eye += distance_from_origin;
       vec3 refracted_ray_norm = refract(glass_refraction_index, normal, norm_ray);
       float td = distance_from_eye - start_distance; // travel distance
-      vec3 extinction = vec3(expf(-0.01f * td), expf(-0.01f * td), expf(-0.2f * td));
+      vec3 extinction = vec3(expf(-absorption.x * td), expf(-absorption.y * td), expf(-absorption.z * td));
 //      vec3 extinction = vec3(0.1, 0.1, 1);
       return NEXT(trace)(refracted_ray_norm, intersection, distance_from_eye + distance_from_origin) * extinction;
     }

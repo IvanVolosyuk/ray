@@ -5,7 +5,6 @@
 // Trinity College Dublin, Ireland
 // 26 Feb 2016
 
-#include "gl_renderer.hpp"
 
 #include <iostream>
 #include <string>
@@ -18,6 +17,11 @@
 #include <ostream>
 #include <fstream>
 #include <iostream>
+#include "imgui/imgui.h"
+#include "imgui/examples/imgui_impl_sdl.h"
+#include "imgui/examples/imgui_impl_opengl3.h"
+
+#include "gl_renderer.hpp"
 
 using std::string;
 using std::endl;
@@ -212,6 +216,9 @@ GLuint create_quad_program() {
 }
 
 OpenglRenderer::~OpenglRenderer() {
+  ImGui_ImplOpenGL3_Shutdown();
+  ImGui_ImplSDL2_Shutdown();
+  ImGui::DestroyContext();
   if (context_ != nullptr) {
     SDL_GL_DeleteContext(context_);
   }
@@ -348,6 +355,18 @@ bool OpenglRenderer::setup() {
   post_processor_mul_ = glGetUniformLocation(quad_program, "mul");
   frame_num = 0;
 
+
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    io_ = &ImGui::GetIO();
+    //io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;  // Enable Keyboard Controls
+
+    ImGui_ImplSDL2_InitForOpenGL(window_, context_);
+    ImGui_ImplOpenGL3_Init("#version 150");
+
+    // Setup style
+    ImGui::StyleColorsDark();
+
   return true;
 }
 
@@ -406,9 +425,72 @@ void OpenglRenderer::reset_accumulate() {
   frame_num = 0;
 }
 
+void OpenglRenderer::ProcessEvent(SDL_Event* event) {
+  ImGui_ImplSDL2_ProcessEvent(event);
+}
+bool OpenglRenderer::WantCaptureMouse() {
+  return io_ != nullptr && io_->WantCaptureMouse;
+}
+
+bool OpenglRenderer::WantCaptureKeyboard() {
+  return io_ != nullptr && io_->WantCaptureKeyboard;
+}
+
 extern int x_batch;
 
+bool show_demo_window = true;
+bool show_another_window = true;
+vec3 clear_color;
+float brightness = 1.f;
+vec3 absorption_color = vec3(0.17, 0.17, 0.53);
+float absorption_intensity = 1.0f;
+
 void OpenglRenderer::draw() {
+
+
+  ImGui_ImplOpenGL3_NewFrame();
+  ImGui_ImplSDL2_NewFrame(window_);
+  ImGui::NewFrame();
+
+  // 1. Show the big demo window (Most of the sample code is in ImGui::ShowDemoWindow()! You can browse its code to learn more about Dear ImGui!).
+  if (show_demo_window) {
+    ImGui::ShowDemoWindow(&show_demo_window);
+  }
+  {
+    static int counter = 0;
+
+    ImGui::Begin("Hello, world!");                          // Create a window called "Hello, world!" and append into it.
+
+    ImGui::Text("This is some useful text.");               // Display some text (you can use a format strings too)
+    ImGui::Checkbox("Demo Window", &show_demo_window);      // Edit bools storing our window open/close state
+    ImGui::Checkbox("Another Window", &show_another_window);
+
+    ImGui::DragFloat("Brightness", &brightness, 0.05, 0.01f, 100.0f);
+    if (ImGui::DragFloat("Lense Size", &lense_blur, 0.0001, 0.0001f, 0.1f, "%0.4f")
+     || ImGui::DragFloat("Focus Distance", &focused_distance, 0.05, 0.01f, 10.0f)
+     || ImGui::DragFloat("Light Size", &light_size, 0.01, 0.01f, 4.0f)
+     || ImGui::SliderInt("Max Depth", &max_depth, 1, 6)
+     || ImGui::ColorEdit3("Absorption Color", (float*)&absorption_color, 0)
+     || ImGui::DragFloat("Absorption Intensitiy", &absorption_intensity, 0.0001, 0.01, 1)
+) {
+      absorption = absorption_color * absorption_intensity;
+      // 63 47 116 1
+      printf("Absorption: %1.5f %1.5f %1.5f\n", absorption.x, absorption.y, absorption.z);
+      float max_a = max(absorption.x, max(absorption.y, absorption.z));
+      printf("Absorption: %1.5f %1.5f %1.5f base=%1.5f\n", absorption.x / max_a, absorption.y / max_a, absorption.z / max_a, max_a);
+       light_size2 = light_size * light_size;
+       reset_accumulate();
+    }
+    ImGui::ColorEdit3("clear color", (float*)&clear_color); // Edit 3 floats representing a color
+
+    if (ImGui::Button("Button"))                            // Buttons return true when clicked (most widgets return true when edited/activated)
+      counter++;
+    ImGui::SameLine();
+    ImGui::Text("counter = %d", counter);
+
+    ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
+    ImGui::End();
+  }
 
   glUseProgram( ray_program );
   for (size_t i = 0; i < LENGTH(model_inputs); i++) {
@@ -438,6 +520,7 @@ void OpenglRenderer::draw() {
 
   // launch compute shaders!
   glDispatchCompute(width_ / x_batch, height_, 1 );
+  ImGui::Render();
 
   // prevent sampling befor all writes to image are done
   glMemoryBarrier( GL_SHADER_IMAGE_ACCESS_BARRIER_BIT );
@@ -445,11 +528,12 @@ void OpenglRenderer::draw() {
 //  glClear( GL_COLOR_BUFFER_BIT );
   glUseProgram( quad_program );
   frame_num += max_rays;
-  glUniform1f(post_processor_mul_, 1.f/frame_num);
+  glUniform1f(post_processor_mul_, 1.f/frame_num * brightness);
   glBindVertexArray( quad_vao );
   glActiveTexture( GL_TEXTURE0 );
   glBindTexture( GL_TEXTURE_2D, tex_output );
   glDrawArrays( GL_TRIANGLE_STRIP, 0, 4 );
+  ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
   SDL_GL_SwapWindow(window_);
 
   if ((frame_num & (frame_num - 1)) == 0 && frame_num > 8) {

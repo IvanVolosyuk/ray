@@ -8,10 +8,10 @@ else
 LDFLAGS=-L. -lSDL2 -lGL -lSDL2 -lGLEW -lpthread -lpng
 endif
 CFLAGS+=-I../src -ggdb
-CXXFLAGS+=-I../src -ggdb -I/usr/include/SDL2 -std=c++17 -O3 -Wall -Ic:\MinGW-w64\mingw64\include -Ic:\msys64\mingw64\include
-OBJ=vector.o ray.o sw_renderer.o gl_renderer.o png.o texture.o
+CXXFLAGS+=-I../src -ggdb -I/usr/include/SDL2 -std=c++17 -O3 -Wall -Ic:\MinGW-w64\mingw64\include -Ic:\msys64\mingw64\include -DIMGUI_IMPL_OPENGL_LOADER_GLEW -I../src/imgui
+OBJ=vector.o ray.o sw_renderer.o gl_renderer.o png.o texture.o imgui_demo.o imgui_draw.o imgui_widgets.o imgui.o imgui_impl_opengl3.o imgui_impl_sdl.o
 
-vpath %.cpp ../src
+vpath %.cpp ../src ../src/imgui  ../src/imgui/examples
 vpath %.hpp ../src
 vpath %.h ../src/shader
 .PHONY: all
@@ -48,4 +48,5 @@ shader.comp: shader.comp.in
 
 clean:
 	$(RM) ray $(OBJ) shader.comp 
+
 
