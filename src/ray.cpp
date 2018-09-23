@@ -23,6 +23,7 @@ using namespace std::placeholders;
 
 int window_width = 480;
 int window_height = 270;
+float brightness = 1;
 
 void set_focus_distance(float x, float y) {
   focused_distance = SoftwareRenderer::distance(x, y, window_width, window_height);
@@ -189,6 +190,10 @@ G       = Switch Sofware / OpenGL renderer
                            case SDL_SCANCODE_D:
                              move_right(event.key.timestamp);
                              update_key_ts(&ts_strafe_right);
+                             break;
+                           case SDL_SCANCODE_SPACE:
+                             if (event.key.state != SDL_PRESSED)
+                               show_settings = !show_settings;
                              break;
                            case SDL_SCANCODE_0:
                              renderer->set_exposure_compensation(event.key.state == SDL_PRESSED);

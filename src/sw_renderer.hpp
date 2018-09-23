@@ -34,7 +34,6 @@ class SoftwareRenderer : public Renderer {
 
   std::vector<std::thread> threads_;
   std::vector<double> screen_measure_;
-  float multiplier_ = 1;
   std::mutex m_;
   std::condition_variable cv_;
   int frame_ = 0;

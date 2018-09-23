@@ -356,16 +356,16 @@ bool OpenglRenderer::setup() {
   frame_num = 0;
 
 
-    IMGUI_CHECKVERSION();
-    ImGui::CreateContext();
-    io_ = &ImGui::GetIO();
-    //io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;  // Enable Keyboard Controls
+  IMGUI_CHECKVERSION();
+  ImGui::CreateContext();
+  io_ = &ImGui::GetIO();
+  //io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;  // Enable Keyboard Controls
 
-    ImGui_ImplSDL2_InitForOpenGL(window_, context_);
-    ImGui_ImplOpenGL3_Init("#version 150");
+  ImGui_ImplSDL2_InitForOpenGL(window_, context_);
+  ImGui_ImplOpenGL3_Init("#version 150");
 
-    // Setup style
-    ImGui::StyleColorsDark();
+  // Setup style
+  ImGui::StyleColorsDark();
 
   return true;
 }
@@ -438,10 +438,9 @@ bool OpenglRenderer::WantCaptureKeyboard() {
 
 extern int x_batch;
 
-bool show_demo_window = true;
-bool show_another_window = true;
+bool show_demo_window = false;
+bool show_settings = true;
 vec3 clear_color;
-float brightness = 1.f;
 vec3 absorption_color = vec3(0.17, 0.17, 0.53);
 float absorption_intensity = 1.0f;
 
@@ -456,14 +455,12 @@ void OpenglRenderer::draw() {
   if (show_demo_window) {
     ImGui::ShowDemoWindow(&show_demo_window);
   }
-  {
+  if (show_settings) {
     static int counter = 0;
 
-    ImGui::Begin("Hello, world!");                          // Create a window called "Hello, world!" and append into it.
+    ImGui::Begin("Settings");
 
-    ImGui::Text("This is some useful text.");               // Display some text (you can use a format strings too)
-    ImGui::Checkbox("Demo Window", &show_demo_window);      // Edit bools storing our window open/close state
-    ImGui::Checkbox("Another Window", &show_another_window);
+    ImGui::Checkbox("Demo Window", &show_demo_window);
 
     ImGui::DragFloat("Brightness", &brightness, 0.05, 0.01f, 100.0f);
     if (ImGui::DragFloat("Lense Size", &lense_blur, 0.0001, 0.0001f, 0.1f, "%0.4f")
@@ -481,14 +478,8 @@ void OpenglRenderer::draw() {
        light_size2 = light_size * light_size;
        reset_accumulate();
     }
-    ImGui::ColorEdit3("clear color", (float*)&clear_color); // Edit 3 floats representing a color
 
-    if (ImGui::Button("Button"))                            // Buttons return true when clicked (most widgets return true when edited/activated)
-      counter++;
-    ImGui::SameLine();
-    ImGui::Text("counter = %d", counter);
-
-    ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
+    ImGui::Text("%.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
     ImGui::End();
   }
 

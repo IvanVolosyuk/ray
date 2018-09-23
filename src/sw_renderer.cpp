@@ -198,7 +198,7 @@ void SoftwareRenderer::drawThread(int id) {
     printf("Num frames: %d rays: %d\n", num_frames, nrays_);
     fflush(stdout);
   }
-  double one_mul = 1. / nrays_ / multiplier_;
+  double one_mul = brightness / nrays_;
 
   vec3 yray = sight - yoffset - xoffset;
   for (int y = 0; y < window_height_; y++) {
@@ -238,58 +238,7 @@ void SoftwareRenderer::drawThread(int id) {
     }
     yray += dy;
   }
-  screen_measure_[id] = total * multiplier_;
-}
-
-void SoftwareRenderer::postprocess() {
-  int num_frames = frame_ - base_frame_;
-  double one_mul = 1. / num_frames / multiplier_;
-
-  for (int i = 0; i < window_width_ * window_height_; i++) {
-    vec3 res = BasePoint<float>::convert(fppixels_[i] * one_mul);
-    pp_fppixels_[i] = res;
-  }
-//  for (int y = 0; y < window_height_; y++) {
-//    for (int x = 0; x < window_width_; x++) {
-//      vec3 res = BasePoint<float>::convert(fppixels_[y * window_width_ + x] * one_mul);
-//      float sum = res.x + res.y + res.z;
-//      if (sum < 6) {
-//        continue;
-//      }
-//      sum /= 3 * 200;
-//      float fade = 0.90;
-//      int n = (log(1./256/16) - log(sum)) / log(fade);
-////      printf("%d %f\n", n, sum);
-//      float mul = 0.005;
-//      for (int i = x+1; i < std::min(window_width_, x+n); i++) {
-//        pp_fppixels_[y * window_width_ + i] += res * mul;
-//        mul *= fade;
-//      }
-//      mul = 0.005;
-//      for (int i = x-1; i >= std::max(0, x-n); i--) {
-//        pp_fppixels_[y * window_width_ + i] += res * mul;
-//        mul *= fade;
-//      }
-//       mul = 0.005;
-//      for (int i = y+1; i < std::min(window_height_, y+n); i++) {
-//        pp_fppixels_[i * window_width_ + x] += res * mul;
-//        mul *= fade;
-//      }
-//      mul = 0.005;
-//      for (int i = y-1; i >= std::max(0, y-n); i--) {
-//        pp_fppixels_[i * window_width_ + x] += res * mul;
-//        mul *= fade;
-//      }
-//    }
-//  }
-  for (int i = 0; i < window_width_ * window_height_; i++) {
-    vec3 res = pp_fppixels_[i];
-    vec3 saturated = saturateColor(res);
-    pixels_[i*4] = colorToInt(saturated.z);
-    pixels_[i*4+1] = colorToInt(saturated.y);
-    pixels_[i*4+2] = colorToInt(saturated.x);
-    pixels_[i*4+3] = 255;
-  }
+  screen_measure_[id] = total / brightness;
 }
 
 void SoftwareRenderer::worker(int id) {
@@ -368,13 +317,12 @@ void SoftwareRenderer::draw() {
     std::unique_lock<std::mutex> lk(m_);
     cv_.wait(lk, [this]{return num_running_ == 0;});
   }
-//  postprocess();
   float total = 0;
   for (double m : screen_measure_) {
     total += m;
   }
   if (enable_exposure_compensation_) {
-    multiplier_ = total / window_width_ / window_height_ / 3 * 10;
+    brightness = (window_width_ * window_height_ * 3) / total * 0.1;
   }
   SDL_UpdateTexture(texture_, NULL, (void*)pixels_, window_width_ * sizeof(Uint32));
   SDL_RenderCopy(renderer_, texture_, NULL, NULL);

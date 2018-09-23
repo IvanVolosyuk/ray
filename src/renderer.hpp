@@ -23,6 +23,9 @@ class Renderer {
   SDL_Window *window_ = nullptr;
 };
 
+extern float brightness;
+extern bool show_settings;
+
 extern std::unique_ptr<Texture> wall_tex;
 extern std::unique_ptr<Texture> ceiling_tex;
 extern std::unique_ptr<Texture> floor_tex;
