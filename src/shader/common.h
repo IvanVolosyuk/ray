@@ -8,52 +8,18 @@
 #include "input.h"
 #undef INPUT
 
+#include "struct_input.h"
+
 float fov = 0.7;
 int x_batch = 8;
-
-struct Material {
-  float diffuse_ammount_;
-//  float scattering_;
-  float specular_exponent_;
-};
 
 vec3 floor_color = vec3 (0.14, 1.0, 0.14);
 vec3 wall_color = vec3 (0.85, 0.8, 0.48);
 vec3 ceiling_color = vec3 (0.98, 0.98, 0.98);
 
-Material room_material = {
-  0.5, 1
-};
-
-struct Box {
-  vec3 a_;
-  vec3 b_;
-} room = {vec3 (-6.0f, -9.0f, 0.0f ), vec3 (6.0f, 6.0f, 4.0f)};
-
-
 float light_power = 200.4f;
 vec3 light_pos = vec3(5.0, -8, 3.0);
 vec3 light_color = vec3(light_power, light_power, light_power);
-
-float ball_size = 0.9f;
-float ball_size2 = ball_size * ball_size;
-float ball_inv_size = 1.f / ball_size;
-
-struct Ball {
-  vec3 position_;
-  vec3 color_;
-  Material material_;
-} balls[3] = {
- { vec3(-1, -3, ball_size), vec3(1, 1, 1), {0.05, 500000}},
- { vec3(-3,  0, ball_size), vec3(1.00, 0.71, 0.00), {0.00, 500000}},
- { vec3( 2,  0, ball_size), vec3(0.56, 0.56, 0.56), {0.00, 256}}
-};
-
-Box bbox = {
-  // precomputed
-  vec3(-3.9, -3.9, 0.0),
-  vec3(2.9, 0.9, 1.8)
-};
 
 struct Hit {
   int id_;
@@ -74,11 +40,6 @@ float max_distance = 1000;
 Hit no_hit = Hit(-1, max_distance, 0);
 
 vec3 black = vec3 (0, 0, 0);
-
-int max_internal_reflections = 30;
-
-// Glass refraction index
-float glass_refraction_index = 1.492; //1.458;
 
 vec3 refract(float ior, vec3 N, vec3 I);
 float fresnel(float ior, vec3 N, vec3 I);

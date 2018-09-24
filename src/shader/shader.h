@@ -47,7 +47,7 @@ Hit ball_hit(in int id, in vec3 norm_ray, in vec3 origin) {
   float ball_distance2 = dot(ball_vector, ball_vector);
   float distance_from_object_center2 = ball_distance2 -
     closest_point_distance_from_viewer * closest_point_distance_from_viewer;
-  if (distance_from_object_center2 > ball_size2) {
+  if (distance_from_object_center2 > balls[id].size2_) {
     return no_hit;
   }
   return Hit(id, closest_point_distance_from_viewer, distance_from_object_center2);
@@ -289,9 +289,11 @@ void compute_light(
     }
   }
 
+  if ((ray.flags & FLAG_TERMINATE) != 0) return;
+
   float r = reflect_gen(SW(gen));
   bool is_diffuse = r < m.diffuse_ammount_;
-    ray.norm_ray = scatter(ray.norm_ray, is_diffuse ? 0 : m.specular_exponent_);
+    ray.norm_ray = scatter(ray.norm_ray, is_diffuse ? 1 : m.specular_exponent_);
     float angle = dot(ray.norm_ray, normal);
     if (angle <= 0) {
       ray.flags |= FLAG_TERMINATE;
@@ -333,7 +335,7 @@ void room_trace(
       p.normal);
 }
 
-void trace_ball0_internal(REF(RayData) ray) {
+void trace_ball0_internal(REF(RayData) ray, float size) {
   float start_distance = ray.distance_from_eye;
   for (int i = 0; i < max_internal_reflections; i++) {
     vec3 ball_vector = balls[0].position_ - ray.origin;
@@ -342,7 +344,7 @@ void trace_ball0_internal(REF(RayData) ray) {
     vec3 intersection = ray.origin + ray.norm_ray * distance_from_origin;
     vec3 distance_from_ball_vector = intersection - balls[0].position_;
     vec3 normal = normalize(distance_from_ball_vector);
-    ray.origin = balls[0].position_ + normal * ball_size;
+    ray.origin = balls[0].position_ + normal * size;
     ray.distance_from_eye += distance_from_origin;
 
     if (reflect_gen(SW(gen)) < fresnel(glass_refraction_index, normal, ray.norm_ray)) {
@@ -358,13 +360,15 @@ void trace_ball0_internal(REF(RayData) ray) {
       return;
     }
   }
+  ray.flags |= FLAG_TERMINATE;
 }
 
 void make_refraction(
     REF(RayData) ray,
-    vec3 normal) {
+    vec3 normal,
+    float size) {
   ray.norm_ray = refract(glass_refraction_index, normal, ray.norm_ray);
-  trace_ball0_internal(ray);
+  trace_ball0_internal(ray, size);
 }
 
 void make_reflection(
@@ -381,13 +385,13 @@ void ball_trace (
     in Hit p) {
   Ball ball = balls[p.id_];
   float distance_from_origin = p.closest_point_distance_from_viewer_ -
-    sqrt(ball_size2 - p.distance_from_object_center2_);
+    sqrt(ball.size2_ - p.distance_from_object_center2_);
 
   ray.origin = ray.origin + ray.norm_ray * distance_from_origin;
   ray.distance_from_eye += distance_from_origin;
 
   vec3 distance_from_ball_vector = ray.origin - ball.position_;
-  vec3 normal = distance_from_ball_vector * ball_inv_size;
+  vec3 normal = distance_from_ball_vector * ball.inv_size_;
 
   if (p.id_ != 0) {
     make_reflection(ray, ball.color_, ball.material_, normal);
@@ -399,14 +403,15 @@ void ball_trace (
   if (reflect_gen(SW(gen)) < reflect_ammount) {
     make_reflection(ray, ball.color_, ball.material_, normal);
   } else {
-    make_refraction(ray, normal);
+    make_refraction(ray, normal, ball.size_);
   }
 }
 
 
 vec3 trace (RayData ray) {
 
-  for (int i = 0; i < max_depth; i++) {
+  int depth = 0;
+  while (true) {
     Hit hit = bbox_hit(ray.norm_ray, ray.origin);
 
     Hit light = light_hit(ray.norm_ray, ray.origin);
@@ -415,12 +420,15 @@ vec3 trace (RayData ray) {
       return light_trace_new(light, ray);
     }
 
+    if (depth == max_depth - 1) ray.flags |= FLAG_TERMINATE;
+
     if (hit.id_ < 0) {
       room_trace(ray);
     } else {
       ball_trace(ray, hit);
     }
     if ((ray.flags & FLAG_TERMINATE) != 0) return ray.intensity;
+    depth++;
   }
   return ray.intensity;
 }
@@ -433,8 +441,7 @@ vec3 trace_new (
   ray.norm_ray = norm_ray;
   ray.distance_from_eye = 0;
   ray.color_filter = vec3(1,1,1);
-  // FIXME
-  ray.intensity = vec3(0,0,0) + absorption * 0.001f;
+  ray.intensity = vec3(0,0,0);
   ray.flags = 0;
 
   vec3 color = trace(ray);

@@ -96,7 +96,7 @@ float SoftwareRenderer::distance(float x, float y, int window_width, int window_
 
   if (hit.id_ >= 0) {
     float distance_from_origin = hit.closest_point_distance_from_viewer_
-      - sqrtf(ball_size2 - hit.distance_from_object_center2_);
+      - sqrtf(balls[hit.id_].size2_ - hit.distance_from_object_center2_);
     return distance_from_origin / ray_len;
   }
 

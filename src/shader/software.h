@@ -55,6 +55,7 @@ inline float inversesqrt(float a) { return 1./sqrtf(a); }
 #define abs(x) fabs(x)
 #define in const
 #define REF(x) x&
+#define uniform
 #define Hit(a,b,c) Hit{a,b,c}
 #define RoomHit(a,b,c,d,e,f) RoomHit{a,b,c,d,e,f}
 #define SineHit(a,b,c) SineHit{a,b,c}

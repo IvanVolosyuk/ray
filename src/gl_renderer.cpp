@@ -260,6 +260,12 @@ struct ModelInput {
 #undef INPUT
 };
 
+#undef uniform
+#define uniform extern
+#define NO_INIT
+#include "shader/struct_input.h"
+#undef uniform
+
 void OpenglRenderer::bindTexture(int idx, Texture& tex) {
   GLuint ssbo;
   glGenBuffers(1, &ssbo);
@@ -456,8 +462,6 @@ void OpenglRenderer::draw() {
     ImGui::ShowDemoWindow(&show_demo_window);
   }
   if (show_settings) {
-    static int counter = 0;
-
     ImGui::Begin("Settings");
 
     ImGui::Checkbox("Demo Window", &show_demo_window);
@@ -468,15 +472,28 @@ void OpenglRenderer::draw() {
      || ImGui::DragFloat("Light Size", &light_size, 0.01, 0.01f, 4.0f)
      || ImGui::SliderInt("Max Depth", &max_depth, 1, 6)
      || ImGui::ColorEdit3("Absorption Color", (float*)&absorption_color, 0)
-     || ImGui::DragFloat("Absorption Intensitiy", &absorption_intensity, 0.0001, 0.01, 1)
-) {
+     || ImGui::DragFloat("Absorption Intensitiy", &absorption_intensity, 0.05, 0.05, 10)
+     || ImGui::DragFloat("Refraction Index", &glass_refraction_index, 0.01, 0.9, 5)
+     || ImGui::SliderInt("Max Internal Reflections", &max_internal_reflections, 0, 30)
+     || ImGui::DragFloat3("Room Min", (float*)&room.a_, 0.1, -50, 50)
+     || ImGui::DragFloat3("Room Max", (float*)&room.b_, 0.1, -50, 50)) {
       absorption = absorption_color * absorption_intensity;
-      // 63 47 116 1
-      printf("Absorption: %1.5f %1.5f %1.5f\n", absorption.x, absorption.y, absorption.z);
-      float max_a = max(absorption.x, max(absorption.y, absorption.z));
-      printf("Absorption: %1.5f %1.5f %1.5f base=%1.5f\n", absorption.x / max_a, absorption.y / max_a, absorption.z / max_a, max_a);
-       light_size2 = light_size * light_size;
-       reset_accumulate();
+      light_size2 = light_size * light_size;
+      reset_accumulate();
+    }
+    if (ImGui::TreeNode("Balls")) {
+      for (size_t i = 0; i < LENGTH(balls); i++)
+        if (ImGui::TreeNode((void*)(intptr_t)i, "Ball %ld", i)) {
+          if (ImGui::DragFloat3("Position", (float*)&balls[i].position_, 0.01, -10, 10)
+           || ImGui::DragFloat("Size", (float*)&balls[i].size_, 0.1, 0, 5)
+           || ImGui::ColorEdit3("Color", (float*)&balls[i].color_)
+           || ImGui::DragFloat("Diffuse ammount", (float*)&balls[i].material_.diffuse_ammount_, 0.01, 0, 1)
+           || ImGui::DragFloat("Specular", (float*)&balls[i].material_.specular_exponent_, 0.1, 1, 100000, "%f", 100)) {
+            reset_accumulate();
+          }
+          ImGui::TreePop();
+        }
+      ImGui::TreePop();
     }
 
     ImGui::Text("%.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
@@ -508,6 +525,44 @@ void OpenglRenderer::draw() {
         }
     }
   }
+  char field_name[64];
+  for (size_t i = 0; i < LENGTH(balls); i++) {
+#define SET_ARRAY_FIELD(name, field, type, conv) {              \
+    snprintf(field_name, 64, #name "[%ld]." #field, i);         \
+    GLint loc = glGetUniformLocation(ray_program, field_name);  \
+    if (loc == -1) {                                            \
+      std::cerr << "Location " << field_name                    \
+        << " undefined: " << SDL_GetError() << endl;            \
+    } else {                                                    \
+      glUniform##type(loc, 1, conv name[i].field);              \
+    }                                                           \
+  }
+    SET_ARRAY_FIELD(balls, position_, 3fv, (float*)&)
+    SET_ARRAY_FIELD(balls, color_, 3fv, (float*)&)
+    SET_ARRAY_FIELD(balls, material_.diffuse_ammount_, 1fv, &)
+    SET_ARRAY_FIELD(balls, material_.specular_exponent_, 1fv, &)
+    SET_ARRAY_FIELD(balls, size_, 1fv, &)
+    balls[i].size2_ = balls[i].size_ * balls[i].size_;
+    balls[i].inv_size_ = 1.f / balls[i].size_;
+    SET_ARRAY_FIELD(balls, size2_, 1fv, &)
+    SET_ARRAY_FIELD(balls, inv_size_, 1fv, &)
+
+    if (i == 0) {
+      bbox.a_ = balls[i].position_ - vec3(balls[i].size_);
+      bbox.b_ = balls[i].position_ + vec3(balls[i].size_);
+    } else {
+      bbox.a_ = min(bbox.a_, balls[i].position_ - vec3(balls[i].size_));
+      bbox.b_ = max(bbox.b_, balls[i].position_ + vec3(balls[i].size_));
+    }
+  }
+#define SET_FIELD(name, field, type, conv) {                          \
+    GLint loc = glGetUniformLocation(ray_program, #name "." #field);  \
+    glUniform##type(loc, 1, conv name.field);                         \
+  }
+  SET_FIELD(bbox, a_, 3fv, (float*) &)
+  SET_FIELD(bbox, b_, 3fv, (float*) &)
+  SET_FIELD(room, a_, 3fv, (float*) &)
+  SET_FIELD(room, b_, 3fv, (float*) &)
 
   // launch compute shaders!
   glDispatchCompute(width_ / x_batch, height_, 1 );
