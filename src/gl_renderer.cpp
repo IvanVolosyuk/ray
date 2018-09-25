@@ -261,7 +261,7 @@ void readTextureLayer(
         RT_BUFFER_INPUT, RT_FORMAT_UNSIGNED_BYTE4, 1024, 1024);
     unsigned char *dst = (unsigned char*) buffer->map(
         0, RT_BUFFER_MAP_WRITE_DISCARD);
-    for (int i = 0; i < bytes.size(); i+=3) {
+    for (size_t i = 0; i < bytes.size(); i+=3) {
       *dst++ = bytes[i];
       *dst++ = bytes[i+1];
       *dst++ = bytes[i+2];
@@ -272,7 +272,7 @@ void readTextureLayer(
         RT_BUFFER_INPUT, RT_FORMAT_FLOAT4, 1024, 1024);
     float *dst = (float*) buffer->map(
         0, RT_BUFFER_MAP_WRITE_DISCARD);
-    for (int i = 0; i < bytes.size(); i+=3) {
+    for (size_t i = 0; i < bytes.size(); i+=3) {
       vec3 n = normalize(vec3{
         (float(bytes[i]) - 128.f) / 256.f,
         (float(bytes[i+1]) - 128.f) / 256.f,
@@ -467,6 +467,7 @@ bool show_settings = true;
 vec3 clear_color;
 vec3 absorption_color = vec3(0.17, 0.17, 0.53);
 float absorption_intensity = 1.0f;
+bool no_light_rays = false;
 
 void OpenglRenderer::draw() {
   ImGui_ImplOpenGL3_NewFrame();
@@ -486,10 +487,11 @@ void OpenglRenderer::draw() {
 
     ImGui::DragFloat("Brightness", &brightness, 0.05, 0.01f, 100.0f);
 
+    a |= ImGui::Checkbox("No light rays", &no_light_rays);
     a |= ImGui::DragFloat("Lense Size", &lense_blur, 0.0001, 0.0001f, 0.1f, "%0.4f");
     a |= ImGui::DragFloat("Focus Distance", &focused_distance, 0.05, 0.01f, 10.0f);
     a |= ImGui::DragFloat("Light Size", &light_size, 0.01, 0.01f, 4.0f);
-    a |= ImGui::SliderInt("Max Depth", &max_depth, 1, 6);
+    a |= ImGui::SliderInt("Max Depth", &max_depth, 1, 20);
     a |= ImGui::ColorEdit3("Absorption Color", (float*)&absorption_color, 0);
     a |= ImGui::DragFloat("Absorption Intensitiy", &absorption_intensity, 0.05, 0.05, 10);
     a |= ImGui::DragFloat("Refraction Index", &glass_refraction_index, 0.01, 0.9, 5);
@@ -545,8 +547,9 @@ void OpenglRenderer::draw() {
     ctx_["sysAbsorption"]->set3fv((float*)&absorption);
     ctx_["room"]->setUserData(sizeof(room), &room);
     ctx_["sysMaxInternalReflections"]->setUint(max_internal_reflections);
+    ctx_["sysTracerFlags"]->setUint(no_light_rays ? 2 : 0); 
 
-    for (int i = 0; i < LENGTH(balls); i++) {
+    for (size_t i = 0; i < LENGTH(balls); i++) {
       balls[i].size2_ = balls[i].size_ * balls[i].size_;
       balls[i].inv_size_ = 1.f / balls[i].size_;
       if (i == 0) {

@@ -49,6 +49,7 @@ rtDeclareVariable(uint,   sysFrameNum, , );
 rtDeclareVariable(uint,   sysMaxInternalReflections, , );
 rtDeclareVariable(float,  sysRefractionIndex, , );
 rtDeclareVariable(float3, sysAbsorption, , make_float3(0.17,0.17,0.53));
+rtDeclareVariable(uint,   sysTracerFlags, , );
 
 //rtDeclareVariable(optix::Ray, theRay, rtCurrentRay, );
 
@@ -467,6 +468,7 @@ float3 scatter(uint& seed, const float3 v, float specular_exponent) {
 }
 
 #define FLAG_TERMINATE 1
+#define FLAG_NO_SECONDARY 2
 
 struct RayData {
   float3 intensity;
@@ -486,42 +488,43 @@ void compute_light(
     const float3 specular_color,
     const Material m,
     const float3 normal) {
-  float3 light_rnd_pos = light_pos + light_distr(ray.seed);
+  if ((ray.flags & FLAG_NO_SECONDARY) == 0) {
+    float3 light_rnd_pos = light_pos + light_distr(ray.seed);
 
-  float3 light_from_point = light_rnd_pos - ray.origin;
-  float angle_x_distance = dot(normal, light_from_point);
-  if (angle_x_distance > 0) {
+    float3 light_from_point = light_rnd_pos - ray.origin;
+    float angle_x_distance = dot(normal, light_from_point);
+    if (angle_x_distance > 0) {
 
-    float light_distance2 = dot(light_from_point, light_from_point);
-    float light_distance_inv = inversesqrt(light_distance2);
-    float light_distance = 1.f/light_distance_inv;
-    float3 light_from_point_norm = light_from_point * light_distance_inv;
+      float light_distance2 = dot(light_from_point, light_from_point);
+      float light_distance_inv = inversesqrt(light_distance2);
+      float light_distance = 1.f/light_distance_inv;
+      float3 light_from_point_norm = light_from_point * light_distance_inv;
 
-    Hit hit = bbox_hit(light_from_point_norm, ray.origin);
+      Hit hit = bbox_hit(light_from_point_norm, ray.origin);
 
-    if (hit.closest_point_distance_from_viewer_ > light_distance) {
-      float angle = angle_x_distance * light_distance_inv;
-      float a = dot(ray.norm_ray, light_from_point_norm);
-      float specular = 0;
-      if (a > 0) {
-        // Clamp
-        a = min(a, 1.f);
-        specular = powf(a, m.specular_exponent_);
+      if (hit.closest_point_distance_from_viewer_ > light_distance) {
+        float angle = angle_x_distance * light_distance_inv;
+        float a = dot(ray.norm_ray, light_from_point_norm);
+        float specular = 0;
+        if (a > 0) {
+          // Clamp
+          a = min(a, 1.f);
+          specular = powf(a, m.specular_exponent_);
+        }
+        float total_distance = light_distance + ray.distance_from_eye;
+
+        // FIXME: should angle be only used for diffuse color?
+        float3 reflected_light = (color * light_color) * m.diffuse_ammount_
+          + (specular_color * light_color) * (1-m.diffuse_ammount_) * specular;
+        ray.intensity += reflected_light * ray.color_filter * (angle / (total_distance * total_distance + 1e-12f));
       }
-      float total_distance = light_distance + ray.distance_from_eye;
-
-      // FIXME: should angle be only used for diffuse color?
-      float3 reflected_light = (color * light_color) * m.diffuse_ammount_
-        + (specular_color * light_color) * (1-m.diffuse_ammount_) * specular;
-      ray.intensity += reflected_light * ray.color_filter * (angle / (total_distance * total_distance + 1e-12f));
     }
   }
-
   if ((ray.flags & FLAG_TERMINATE) != 0) return;
 
   float r = reflect_gen(ray.seed);
   bool is_diffuse = r < m.diffuse_ammount_;
-    ray.norm_ray = scatter(ray.seed, ray.norm_ray, is_diffuse ? 1 : m.specular_exponent_);
+    ray.norm_ray = is_diffuse ? scatter(ray.seed, normal, 1) : scatter(ray.seed, ray.norm_ray, m.specular_exponent_);
     float angle = dot(ray.norm_ray, normal);
     if (angle <= 0) {
       ray.flags |= FLAG_TERMINATE;
@@ -681,12 +684,17 @@ float3 trace_new(
   ray.distance_from_eye = 0;
   ray.color_filter = float3{1,1,1};
   ray.intensity = float3{0,0,0};
-  ray.flags = 0;
+  ray.flags = sysTracerFlags;
   ray.seed = seed;
 
   float3 color = trace(ray);
   seed = ray.seed;
-  return clamp(color, make_float3(0), make_float3(1e4));
+  if (color.x < 0 || color.y < 0 || color.z < 0
+      || isnan(color.x) || isnan(color.y) || isnan(color.z)
+      || !isfinite(color.x) || !isfinite(color.z) || !isfinite(color.z)) {
+    return make_float3(0);
+  }
+  return color;
 }
 
 RT_PROGRAM void ray() {
