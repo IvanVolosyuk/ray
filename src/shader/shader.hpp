@@ -96,7 +96,7 @@ RoomHit room_hit_internal(
   float ny = float((nn>>16) & 255) - 128;
   vec3 n = normalize(normal * ny + U * nx + V * nz);
   Material material;
-  material.specular_exponent_ = 1 + specular_exponent * (256 - float((px >> 24)&255));
+  material.specular_exponent_ = 1 + specular_exponent * (1 - float((px >> 24)&255) / 256.);
   material.diffuse_ammount_ = diffuse_ammount;
   vec3 reflection = norm_ray - n * (dot(norm_ray, n) * 2);
   assert(isfinite(min_dist));

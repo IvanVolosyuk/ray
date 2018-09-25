@@ -35,6 +35,7 @@ class OpenglRenderer : public Renderer {
   int width_;
   int height_;
   std::map<int, std::vector<unsigned char>> textures;
+  bool requireInit = true;
 
   GLuint quad_vao;
   GLuint quad_program;

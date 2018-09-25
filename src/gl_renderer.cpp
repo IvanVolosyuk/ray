@@ -350,23 +350,7 @@ void OpenglRenderer::initRenderer() {
 
 //  auto geo = ctx_->createGeometry();
 //  auto group = ctx_->createGeometryGroup();
-  ctx_["wall_specular_exponent"]->setFloat(wall_tex->specular_exponent_); 
-  ctx_["wall_diffuse_ammount"]->setFloat(wall_tex->diffuse_ammount_); 
-  ctx_["sysFrameNum"]->setUint(frame_num);
-
-  ctx_["sysMaxRays"]->setUint(max_rays);
-  ctx_["sysMaxDepth"]->setUint(max_depth);
-  ctx_["sysSight"]->set3fv((float*)&sight);
-  ctx_["sysSightX"]->set3fv((float*)&sight_x);
-  ctx_["sysSightY"]->set3fv((float*)&sight_y);
-  ctx_["sysViewer"]->set3fv((float*)&viewer);
-  ctx_["sysLightSize"]->setFloat(light_size);
-  ctx_["sysLenseBlur"]->setFloat(lense_blur);
-  ctx_["sysFocusedDistance"]->setFloat(focused_distance);
   ctx_["sysBatchSize"]->setUint(x_batch);
-  ctx_["sysMaxInternalReflections"]->setUint(max_internal_reflections);
-  ctx_["sysRefractionIndex"]->setFloat(glass_refraction_index);
-  ctx_["sysAbsorption"]->set3fv((float*)&absorption);
 }
 
 bool OpenglRenderer::setup() {
@@ -485,57 +469,112 @@ vec3 absorption_color = vec3(0.17, 0.17, 0.53);
 float absorption_intensity = 1.0f;
 
 void OpenglRenderer::draw() {
-
-
   ImGui_ImplOpenGL3_NewFrame();
   ImGui_ImplSDL2_NewFrame(window_);
   ImGui::NewFrame();
+  bool a = requireInit;
 
   // 1. Show the big demo window (Most of the sample code is in ImGui::ShowDemoWindow()! You can browse its code to learn more about Dear ImGui!).
   if (show_demo_window) {
     ImGui::ShowDemoWindow(&show_demo_window);
   }
+
   if (show_settings) {
     ImGui::Begin("Settings");
 
     ImGui::Checkbox("Demo Window", &show_demo_window);
 
     ImGui::DragFloat("Brightness", &brightness, 0.05, 0.01f, 100.0f);
-    if (ImGui::DragFloat("Lense Size", &lense_blur, 0.0001, 0.0001f, 0.1f, "%0.4f")
-     || ImGui::DragFloat("Focus Distance", &focused_distance, 0.05, 0.01f, 10.0f)
-     || ImGui::DragFloat("Light Size", &light_size, 0.01, 0.01f, 4.0f)
-     || ImGui::SliderInt("Max Depth", &max_depth, 1, 6)
-     || ImGui::ColorEdit3("Absorption Color", (float*)&absorption_color, 0)
-     || ImGui::DragFloat("Absorption Intensitiy", &absorption_intensity, 0.05, 0.05, 10)
-     || ImGui::DragFloat("Refraction Index", &glass_refraction_index, 0.01, 0.9, 5)
-     || ImGui::SliderInt("Max Internal Reflections", &max_internal_reflections, 0, 30)
-     || ImGui::DragFloat3("Room Min", (float*)&room.a_, 0.1, -50, 50)
-     || ImGui::DragFloat3("Room Max", (float*)&room.b_, 0.1, -50, 50)) {
-      absorption = absorption_color * absorption_intensity;
-      light_size2 = light_size * light_size;
-      reset_accumulate();
-    }
+
+    a |= ImGui::DragFloat("Lense Size", &lense_blur, 0.0001, 0.0001f, 0.1f, "%0.4f");
+    a |= ImGui::DragFloat("Focus Distance", &focused_distance, 0.05, 0.01f, 10.0f);
+    a |= ImGui::DragFloat("Light Size", &light_size, 0.01, 0.01f, 4.0f);
+    a |= ImGui::SliderInt("Max Depth", &max_depth, 1, 6);
+    a |= ImGui::ColorEdit3("Absorption Color", (float*)&absorption_color, 0);
+    a |= ImGui::DragFloat("Absorption Intensitiy", &absorption_intensity, 0.05, 0.05, 10);
+    a |= ImGui::DragFloat("Refraction Index", &glass_refraction_index, 0.01, 0.9, 5);
+    a |= ImGui::SliderInt("Max Internal Reflections", &max_internal_reflections, 0, 30);
+    a |= ImGui::DragFloat3("Room Min", (float*)&room.a_, 0.1, -50, 50);
+    a |= ImGui::DragFloat3("Room Max", (float*)&room.b_, 0.1, -50, 50);
+
     if (ImGui::TreeNode("Balls")) {
       for (size_t i = 0; i < LENGTH(balls); i++)
         if (ImGui::TreeNode((void*)(intptr_t)i, "Ball %ld", i)) {
-          if (ImGui::DragFloat3("Position", (float*)&balls[i].position_, 0.01, -10, 10)
-           || ImGui::DragFloat("Size", (float*)&balls[i].size_, 0.1, 0, 5)
-           || ImGui::ColorEdit3("Color", (float*)&balls[i].color_)
-           || ImGui::DragFloat("Diffuse ammount", (float*)&balls[i].material_.diffuse_ammount_, 0.01, 0, 1)
-           || ImGui::DragFloat("Specular", (float*)&balls[i].material_.specular_exponent_, 0.1, 1, 100000, "%f", 100)) {
-            reset_accumulate();
-          }
+          a |= ImGui::DragFloat3("Position", (float*)&balls[i].position_, 0.01, -10, 10);
+          a |= ImGui::DragFloat("Size", (float*)&balls[i].size_, 0.1, 0, 5);
+          a |= ImGui::ColorEdit3("Color", (float*)&balls[i].color_);
+          a |= ImGui::DragFloat("Diffuse ammount", (float*)&balls[i].material_.diffuse_ammount_, 0.01, 0, 1);
+          a |= ImGui::DragFloat("Specular", (float*)&balls[i].material_.specular_exponent_, 0.1, 1, 100000, "%f", 2);
           ImGui::TreePop();
         }
+      ImGui::TreePop();
+    }
+    if (ImGui::TreeNode("Materials")) {
+      if (ImGui::TreeNode("Wall")) {
+        a |= ImGui::SliderFloat("Diffuse ammount", &wall_tex->diffuse_ammount_, 0, 1);
+        a |= ImGui::SliderFloat("Specular", &wall_tex->specular_exponent_, 1, 100000, "%f", 2);
+        ImGui::TreePop();
+      }
+      if (ImGui::TreeNode("Ceiling")) {
+        a |= ImGui::SliderFloat("Diffuse ammount", &ceiling_tex->diffuse_ammount_, 0, 1);
+        a |= ImGui::SliderFloat("Specular", &ceiling_tex->specular_exponent_, 1, 100000, "%f", 2);
+        ImGui::TreePop();
+      }
+
+      if (ImGui::TreeNode("Floor")) {
+        a |= ImGui::SliderFloat("Diffuse ammount", &floor_tex->diffuse_ammount_, 0, 1);
+        a |= ImGui::SliderFloat("Specular", &floor_tex->specular_exponent_, 1, 100000, "%f", 2);
+        ImGui::TreePop();
+      }
       ImGui::TreePop();
     }
 
     ImGui::Text("%.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
     ImGui::End();
   }
+  if (a) {
+    reset_accumulate();
+    absorption = absorption_color * absorption_intensity;
+    light_size2 = light_size * light_size;
+    ctx_["sysLenseBlur"]->setFloat(lense_blur);
+    ctx_["sysFocusedDistance"]->setFloat(focused_distance);
+    ctx_["sysLightSize"]->setFloat(light_size);
+    ctx_["sysLightSize2"]->setFloat(light_size2);
+    ctx_["sysMaxDepth"]->setUint(max_depth);
+    ctx_["sysRefractionIndex"]->setFloat(glass_refraction_index);
+    ctx_["sysAbsorption"]->set3fv((float*)&absorption);
+    ctx_["room"]->setUserData(sizeof(room), &room);
+    ctx_["sysMaxInternalReflections"]->setUint(max_internal_reflections);
+
+    for (int i = 0; i < LENGTH(balls); i++) {
+      balls[i].size2_ = balls[i].size_ * balls[i].size_;
+      balls[i].inv_size_ = 1.f / balls[i].size_;
+      if (i == 0) {
+        bbox.a_ = balls[i].position_ - vec3(balls[i].size_);
+        bbox.b_ = balls[i].position_ + vec3(balls[i].size_);
+      } else {
+        bbox.a_ = min(bbox.a_, balls[i].position_ - vec3(balls[i].size_));
+        bbox.b_ = max(bbox.b_, balls[i].position_ + vec3(balls[i].size_));
+      }
+    }
+
+    ctx_["balls"]->setUserData(sizeof(balls), &balls);
+    ctx_["bbox"]->setUserData(sizeof(bbox), &bbox);
+    ctx_["wall_specular_exponent"]->setFloat(wall_tex->specular_exponent_); 
+    ctx_["wall_diffuse_ammount"]->setFloat(wall_tex->diffuse_ammount_); 
+    ctx_["ceiling_specular_exponent"]->setFloat(ceiling_tex->specular_exponent_); 
+    ctx_["ceiling_diffuse_ammount"]->setFloat(ceiling_tex->diffuse_ammount_); 
+    ctx_["floor_specular_exponent"]->setFloat(floor_tex->specular_exponent_); 
+    ctx_["floor_diffuse_ammount"]->setFloat(floor_tex->diffuse_ammount_); 
+    requireInit = false;
+  }
 
   ctx_["sysFrameNum"]->setUint(frame_num);
   ctx_["sysMaxRays"]->setUint(max_rays);
+  ctx_["sysSight"]->set3fv((float*)&sight);
+  ctx_["sysSightX"]->set3fv((float*)&sight_x);
+  ctx_["sysSightY"]->set3fv((float*)&sight_y);
+  ctx_["sysViewer"]->set3fv((float*)&viewer);
 
   ctx_->launch(0, width_ / x_batch, height_);
   ImGui::Render();

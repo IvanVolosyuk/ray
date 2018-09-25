@@ -41,6 +41,7 @@ rtDeclareVariable(float3, sysSight, , );
 rtDeclareVariable(float3, sysSightX, , );
 rtDeclareVariable(float3, sysSightY, , );
 rtDeclareVariable(float,  sysLightSize, , );
+rtDeclareVariable(float,  sysLightSize2, ,);
 rtDeclareVariable(float,  sysLenseBlur, , );
 rtDeclareVariable(float,  sysFocusedDistance, , );
 rtDeclareVariable(uint,   sysBatchSize, , );
@@ -70,6 +71,7 @@ struct Box {
 };
 
 
+
 struct Ball {
   float3 position_;
   float3 color_;
@@ -79,21 +81,13 @@ struct Ball {
   Material material_;
 };
 
-__device__
-const Ball balls[3] = {
- { float3{-1, -3, 0.9}, float3{1, 1, 1}, 0.9, 0.9*0.9, 1/0.9,  {0.05, 500000}},
- { float3{-3,  0, 0.9}, float3{1.00, 0.71, 0.00}, 0.9, 0.9*0.9, 1/0.9, {0.00, 500000}},
- { float3{ 2,  0, 0.9}, float3{0.56, 0.56, 0.56}, 0.9, 0.9*0.9, 1/0.9, {0.00, 256}}
+struct Balls {
+  Ball ball[3];
 };
 
-__device__
-const Box bbox = {
-  float3{-3.9, -3.9, 0.0},
-  float3{2.9, 0.9, 1.8}
-};
-
-__device__
-const Box room = {{-6.0f, -9.0f, 0.0f }, {6.0f, 6.0f, 4.0f}};
+rtDeclareVariable(Balls, balls, ,);
+rtDeclareVariable(Box, bbox, ,);
+rtDeclareVariable(Box, room, ,);
 
 __device__
 const float fov = 0.7;
@@ -103,11 +97,6 @@ __device__
 const float3 light_pos {5.0, -8, 3.0};
 __device__
 const float3 light_color {light_power, light_power, light_power};
-// FIXME
-__device__
-const float light_size = 0.5;
-__device__
-const float light_size2 = light_size * light_size;
 
 struct Hit {
   int id_;
@@ -265,7 +254,7 @@ float fresnel(float ior, float3 N, float3 I) {
 
 RT_FUNCTION
 Hit ball_hit(const int id, const float3 norm_ray, const float3 origin) {
-  float3 ball_vector = balls[id].position_ - origin;
+  float3 ball_vector = balls.ball[id].position_ - origin;
 
   float closest_point_distance_from_viewer = dot(norm_ray, ball_vector);
   if (closest_point_distance_from_viewer < 0) {
@@ -275,7 +264,7 @@ Hit ball_hit(const int id, const float3 norm_ray, const float3 origin) {
   float ball_distance2 = dot(ball_vector, ball_vector);
   float distance_from_object_center2 = ball_distance2 -
     closest_point_distance_from_viewer * closest_point_distance_from_viewer;
-  if (distance_from_object_center2 > balls[id].size2_) {
+  if (distance_from_object_center2 > balls.ball[id].size2_) {
     return no_hit;
   }
   return Hit{id, closest_point_distance_from_viewer, distance_from_object_center2};
@@ -298,7 +287,7 @@ Hit bbox_hit(const float3 norm_ray, const float3 origin) {
   if (tFar < 0 || tNear > tFar) return no_hit;
 
   Hit hit = no_hit;
-  for (size_t i = 0; i < LENGTH(balls); i++) {
+  for (size_t i = 0; i < LENGTH(balls.ball); i++) {
     Hit other_hit = ball_hit(i, norm_ray, origin);
     if (other_hit.closest_point_distance_from_viewer_ <
         hit.closest_point_distance_from_viewer_) {
@@ -331,7 +320,7 @@ RoomHit room_hit_internal(
 
   Material material;
 //  // FIXME: change texture mode instead of *256
-  material.specular_exponent_ = 1 + specular_exponent * 256 * (1 - roughness);
+  material.specular_exponent_ = 1 + specular_exponent * (1 - roughness);
   material.diffuse_ammount_ = diffuse_ammount;
 //  Material material;
 //  material.specular_exponent_ = 32;
@@ -424,7 +413,7 @@ Hit light_hit(const float3 norm_ray, const float3 origin) {
 
   float distance_from_light_center2 = light_distance2 -
     closest_point_distance_from_origin * closest_point_distance_from_origin;
-  if (distance_from_light_center2 > light_size2) {
+  if (distance_from_light_center2 > sysLightSize2) {
     return no_hit;
   }
   return Hit{-2, closest_point_distance_from_origin, distance_from_light_center2};
@@ -437,7 +426,7 @@ float3 light_trace(
     float3 origin,
     float distance_from_eye) {
   float distance_from_origin = p.closest_point_distance_from_viewer_ -
-    sqrt(light_size2 - p.distance_from_object_center2_);
+    sqrt(sysLightSize2 - p.distance_from_object_center2_);
 
 //  float3 intersection = origin + norm_ray * distance_from_origin;
 //  float3 distance_from_light_vector = intersection - light_pos;
@@ -546,7 +535,7 @@ float3 light_trace_new(
     const Hit p,
     REF(RayData) ray) {
   float distance_from_origin = p.closest_point_distance_from_viewer_ -
-    sqrt(light_size2 - p.distance_from_object_center2_);
+    sqrt(sysLightSize2 - p.distance_from_object_center2_);
 
 //  float3 intersection = origin + norm_ray * distance_from_origin;
 //  float3 distance_from_light_vector = intersection - light_pos;
@@ -580,13 +569,13 @@ RT_FUNCTION
 void trace_ball0_internal(REF(RayData) ray, float size) {
   float start_distance = ray.distance_from_eye;
   for (int i = 0; i < sysMaxInternalReflections; i++) {
-    float3 ball_vector = balls[0].position_ - ray.origin;
+    float3 ball_vector = balls.ball[0].position_ - ray.origin;
     float closest_point_distance_from_viewer = dot(ray.norm_ray, ball_vector);
     float distance_from_origin = 2 * closest_point_distance_from_viewer;
     float3 intersection = ray.origin + ray.norm_ray * distance_from_origin;
-    float3 distance_from_ball_vector = intersection - balls[0].position_;
+    float3 distance_from_ball_vector = intersection - balls.ball[0].position_;
     float3 normal = normalize(distance_from_ball_vector);
-    ray.origin = balls[0].position_ + normal * size;
+    ray.origin = balls.ball[0].position_ + normal * size;
     ray.distance_from_eye += distance_from_origin;
 
     if (reflect_gen(ray.seed) < fresnel(sysRefractionIndex, normal, ray.norm_ray)) {
@@ -631,7 +620,7 @@ RT_FUNCTION
 void ball_trace (
     REF(RayData) ray,
     const Hit p) {
-  Ball ball = balls[p.id_];
+  Ball ball = balls.ball[p.id_];
   float distance_from_origin = p.closest_point_distance_from_viewer_ -
     sqrt(ball.size2_ - p.distance_from_object_center2_);
 

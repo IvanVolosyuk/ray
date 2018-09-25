@@ -58,11 +58,11 @@ int main(int argc, char** argv) {
 
     // Textures converted to png from original tif files:
     // https://www.textures.com/download/3dscans0414/133264?q=wall
-    wall_tex = Texture::Load("TexturesCom_StoneWall3_2x2_1024", 8, 0.2);
+    wall_tex = Texture::Load("TexturesCom_StoneWall3_2x2_1024", 100, 0.3);
     // https://www.textures.com/download/pbr0075/133109?q=ceiling
-    ceiling_tex = Texture::Load("TexturesCom_Concrete_Ceiling_1K", 16, 0.5);
+    ceiling_tex = Texture::Load("TexturesCom_Concrete_Ceiling_1K", 37, 0.4);
     // https://www.textures.com/download/pbr0217/133254?q=floor
-    floor_tex = Texture::Load("TexturesCom_Wood_ParquetStrip_1K", 2, 0.1);
+    floor_tex = Texture::Load("TexturesCom_Wood_ParquetStrip_1K", 100, 0.2);
 
     if (SDL_Init( SDL_INIT_VIDEO) < 0) {
       std::cerr << "Init failed: " << SDL_GetError() << std::endl;
