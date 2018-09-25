@@ -16,7 +16,7 @@
 #include "png.hpp"
 #include "texture.hpp"
 #include "vector.hpp"
-#include "shader/input.h"
+#include "shader/input.hpp"
 
 
 using namespace std::placeholders;

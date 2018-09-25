@@ -1,5 +1,5 @@
 #ifndef INPUT
-#include "software.h"
+#include "software.hpp"
 #define INPUT(type, name, value) extern type name;
 #define DEFAULT_INPUT 1
 #endif
@@ -19,7 +19,7 @@ INPUT(int, max_depth, 2)
 INPUT(float, lense_blur, 0.01)
 INPUT(int, max_rays, 1)
 INPUT(float, glass_refraction_index, 1.492)
-INPUT(int, max_internal_reflections, 30)
+INPUT(int, max_internal_reflections, 2)
 
 
 #ifdef DEFAULT_INPUT

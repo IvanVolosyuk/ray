@@ -22,19 +22,21 @@
 #include "imgui/examples/imgui_impl_opengl3.h"
 
 #include "gl_renderer.hpp"
+#include <optix.h>
+#include <optixu/optixpp_namespace.h>
+#include <optixu/optixu_math_namespace.h>
+#include <optixu/optixu_matrix_namespace.h>
+
+#include "shader/input.hpp"
 
 using std::string;
 using std::endl;
 
+extern int x_batch;
+
 constexpr int OPENGL_MAJOR_VERSION = 4;
 constexpr int OPENGL_MINOR_VERSION = 5;
 constexpr SDL_GLprofile OPENGL_PROFILE = SDL_GLprofile::SDL_GL_CONTEXT_PROFILE_CORE;
-
-struct shader_data_t
-{
-  float viewer[4];
-  float sight[4];
-} shader_data;
 
 std::vector<std::string> split(const std::string &s, char delim) {
   std::stringstream ss(s);
@@ -48,63 +50,14 @@ std::vector<std::string> split(const std::string &s, char delim) {
 
 std::map<int, std::pair<int, std::string>> line_map;
 
-void make_shader_map(const string& shader) {
-  line_map.clear();
-  auto lines = split(shader, '\n');
-  std::regex marker(R"regexp(// GENERATED DONT EDIT (.*) "(.*)".*)regexp");
-  for (size_t i = 0; i < lines.size(); i++) {
-    const string& line = lines[i];
-    std::smatch m;
-    if (std::regex_match (line, m, marker)) {
-      int linenum = std::stoi(m[1].str());
-      string filename = m[2].str();
-//      fprintf(stderr, "Added: %d %d %s\n", i, linenum, filename.c_str());
-      line_map[i] = std::make_pair(linenum, filename);
-    }
-  }
-}
 
-string reformat_errors(const string& input) {
-  std::stringstream out;
-  auto linenum_mesa = std::regex(R"([0-9]+:([0-9]+)\([0-9]+\)(: .*))");
-  auto linenum_nvidia = std::regex(R"(.*[0-9]+\(([0-9]+)\)( *: .*))");
-
-
-  for (const auto& line : split(input, '\n')) {
-    std::smatch m;
-    auto fix = [&]() {
-      int err_line = std::stoi(m[1].str()) - 1;
-      auto lookup = --line_map.upper_bound(err_line);
-      if (lookup != line_map.begin()) {
-        int offset = err_line - lookup->first;
-        int source_line = lookup->second.first + offset - 1;
-        string error_msg = m[2].str() ;
-        out << lookup->second.second
-            << ":" << source_line
-            << " s" << err_line << error_msg.c_str() << endl;
-      } else {
-        out << "Unmatched: " << err_line << " >> " << line << endl;
-      }
-    };
-
-    if (std::regex_match (line, m, linenum_mesa)) {
-      fix();
-    } else if(std::regex_match (line, m, linenum_nvidia)) {
-      fix();
-    } else {
-      out << line << endl;
-    }
-  }
-  return out.str();
-}
 
 void print_shader_info_log( GLuint shader ) {
   int max_length = 4096;
   int actual_length = 0;
   char slog[4096];
   glGetShaderInfoLog( shader, max_length, &actual_length, slog );
-  string reformated = reformat_errors(slog);
-  fprintf( stderr, "shader info log for GL index %u\n%s\n", shader, reformated.c_str());
+  fprintf( stderr, "shader info log for GL index %u\n%s\n", shader, slog);
 }
 
 void print_program_info_log( GLuint program ) {
@@ -112,8 +65,7 @@ void print_program_info_log( GLuint program ) {
   int actual_length = 0;
   char plog[4096];
   glGetProgramInfoLog( program, max_length, &actual_length, plog );
-  string reformated = reformat_errors(plog);
-  fprintf( stderr, "program info log for GL index %u\n%s\n", program, reformated.c_str() );
+  fprintf( stderr, "program info log for GL index %u\n%s\n", program, plog );
 }
 
 bool check_shader_errors( GLuint shader ) {
@@ -203,15 +155,15 @@ GLuint create_quad_program() {
   GLuint vert_shader = glCreateShader( GL_VERTEX_SHADER );
   glShaderSource( vert_shader, 1, &vert_shader_str, NULL );
   glCompileShader( vert_shader );
-  check_shader_errors( vert_shader ); // code moved to gl_utils.cpp
+  check_shader_errors( vert_shader );
   glAttachShader( program, vert_shader );
   GLuint frag_shader = glCreateShader( GL_FRAGMENT_SHADER );
   glShaderSource( frag_shader, 1, &frag_shader_str, NULL );
   glCompileShader( frag_shader );
-  check_shader_errors( frag_shader ); // code moved to gl_utils.cpp
+  check_shader_errors( frag_shader );
   glAttachShader( program, frag_shader );
   glLinkProgram( program );
-  check_program_errors( program ); // code moved to gl_utils.cpp
+  check_program_errors( program );
   return program;
 }
 
@@ -227,7 +179,7 @@ OpenglRenderer::~OpenglRenderer() {
   }
 }
 
-#include "shader/input.h"
+#include "shader/input.hpp"
 
 enum InputType {
   IN_VEC3,
@@ -256,14 +208,14 @@ struct ModelInput {
   void* value_ptr;
 } model_inputs[] {
 #define INPUT(type, name, value) { LookupInputType(#type), #name, &name },
-#include "shader/input.h"
+#include "shader/input.hpp"
 #undef INPUT
 };
 
 #undef uniform
 #define uniform extern
 #define NO_INIT
-#include "shader/struct_input.h"
+#include "shader/struct_input.hpp"
 #undef uniform
 
 void OpenglRenderer::bindTexture(int idx, Texture& tex) {
@@ -277,33 +229,153 @@ void OpenglRenderer::bindTexture(int idx, Texture& tex) {
   glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0); // unbind
 }
 
-bool OpenglRenderer::setup() {
-  std::ifstream t("shader.comp");
-  std::string compute_shader((std::istreambuf_iterator<char>(t)),
-      std::istreambuf_iterator<char>());
-  if (compute_shader.empty()) {
-    std::cerr << "Failed to load 'shader.comp'\n";
-    return false;
+#define RT_CHECK_ERROR_NO_CONTEXT( func ) \
+  do { \
+    RTresult code = func; \
+    if (code != RT_SUCCESS) \
+      std::cerr << "ERROR: Function " << #func << std::endl; \
+  } while (0)
+
+namespace {
+
+void readTextureLayer(
+    optix::Context ctx, 
+    const string& layer,
+    int type,
+    int width,
+    int height,
+    const std::vector<unsigned char> bytes) {
+  auto tex = ctx->createTextureSampler();
+  tex->setWrapMode(0, RT_WRAP_REPEAT);
+  tex->setWrapMode(1, RT_WRAP_REPEAT);
+  tex->setWrapMode(2, RT_WRAP_REPEAT);
+  tex->setFilteringModes(
+      RT_FILTER_NEAREST, RT_FILTER_NEAREST, RT_FILTER_NONE);
+  tex->setIndexingMode(RT_TEXTURE_INDEX_NORMALIZED_COORDINATES);
+
+  // FIXME: use Normalized for normals texture
+//  tex->setReadMode(RT_TEXTURE_READ_NORMALIZED_FLOAT);
+  optix::Buffer buffer;
+  if (type == 0) {
+    buffer = ctx->createBuffer(
+        RT_BUFFER_INPUT, RT_FORMAT_UNSIGNED_BYTE4, 1024, 1024);
+    unsigned char *dst = (unsigned char*) buffer->map(
+        0, RT_BUFFER_MAP_WRITE_DISCARD);
+    for (int i = 0; i < bytes.size(); i+=3) {
+      *dst++ = bytes[i];
+      *dst++ = bytes[i+1];
+      *dst++ = bytes[i+2];
+      *dst++ = 255;
+    }
+  } else if (type == 1) {
+    buffer = ctx->createBuffer(
+        RT_BUFFER_INPUT, RT_FORMAT_FLOAT4, 1024, 1024);
+    float *dst = (float*) buffer->map(
+        0, RT_BUFFER_MAP_WRITE_DISCARD);
+    for (int i = 0; i < bytes.size(); i+=3) {
+      vec3 n = normalize(vec3{
+        (float(bytes[i]) - 128.f) / 256.f,
+        (float(bytes[i+1]) - 128.f) / 256.f,
+        (float(bytes[i+2]) - 128.f) / 256.f});
+
+      *dst++ = n.x;
+      *dst++ = n.y;
+      *dst++ = n.z;
+      *dst++ = 0;
+    }
+  } else {
+    buffer = ctx->createBuffer(
+        RT_BUFFER_INPUT, RT_FORMAT_UNSIGNED_BYTE, 1024, 1024);
+    unsigned char *dst = (unsigned char*) buffer->map(
+        0, RT_BUFFER_MAP_WRITE_DISCARD);
+    memcpy(dst, &bytes[0], bytes.size());
   }
-  make_shader_map(compute_shader);
-  const char *cs = compute_shader.c_str();
+  buffer->unmap(0);
+  tex->setBuffer(buffer);
+
+  ctx[layer]->setTextureSampler(tex);
+}
+
+void loadTexture(optix::Context ctx, const string& name, const Texture& tex) {
+  readTextureLayer(ctx, name + "_albedo", 0, tex.width, tex.height, tex.albedo);
+  readTextureLayer(ctx, name + "_normals", 1, tex.width, tex.height, tex.normals);
+  readTextureLayer(ctx, name + "_roughness", 2, tex.width, tex.height, tex.roughness);
+  ctx[name + "_specular_exponent"]->setFloat(tex.specular_exponent_); 
+  ctx[name + "_diffuse_ammount"]->setFloat(tex.diffuse_ammount_); 
+}
+
+}  // namespace
+
+void OpenglRenderer::initRenderer() {
+  ctx_ = optix::Context::create();
+  std::vector<int> devices = {0};
+  ctx_->setDevices(devices.begin(), devices.end());
+  devices = ctx_->getEnabledDevices();
+  if (devices.size() == 0) {
+    std::cerr << "No Optix devices\n";
+    exit(1);
+  }
+  std::cout << "Using " << ctx_->getDeviceName(devices[0]) << std::endl;
+  auto ray_prog = ctx_->createProgramFromPTXFile("ray.ptx", "ray");
+  auto exc_prog = ctx_->createProgramFromPTXFile("exception.ptx", "exception");
+
+  ctx_->setEntryPointCount(1); // 0 = render
+  ctx_->setRayTypeCount(0);    // This initial demo is not shooting any rays.
+  ctx_->setStackSize(1024);
+
+#if USE_DEBUG_EXCEPTIONS
+  // Disable this by default for performance, otherwise the stitched PTX code will have lots of exception handling inside. 
+  ctx_->setPrintEnabled(true);
+  //ctx_->setPrintLaunchIndex(256, 256);
+  ctx_->setExceptionEnabled(RT_EXCEPTION_ALL, true);
+#endif 
+
+  // Add ctx_-global variables here.
+  ctx_["sysColorBackground"]->setFloat(0.462745f, 0.72549f, 0.0f);
+
+  // This demo just writes into the output buffer, so use RT_BUFFER_OUTPUT as type.
+  // In case of an OpenGL interop buffer, that is automatically registered with CUDA now! Must unregister/register around size changes.
+  bufferOutput_ = ctx_->createBuffer(RT_BUFFER_OUTPUT);
+  bufferOutput_->setFormat(RT_FORMAT_FLOAT4); // RGBA32F
+  bufferOutput_->setSize(width_, height_);
+
+  ctx_["sysOutputBuffer"]->set(bufferOutput_);
+
+  ctx_->setRayGenerationProgram(0, ray_prog);
+  ctx_->setExceptionProgram(0, exc_prog);
+
+  loadTexture(ctx_, "wall", *wall_tex);
+  loadTexture(ctx_, "ceiling", *ceiling_tex);
+  loadTexture(ctx_, "floor", *floor_tex);
+
+//  auto geo = ctx_->createGeometry();
+//  auto group = ctx_->createGeometryGroup();
+  ctx_["wall_specular_exponent"]->setFloat(wall_tex->specular_exponent_); 
+  ctx_["wall_diffuse_ammount"]->setFloat(wall_tex->diffuse_ammount_); 
+  ctx_["sysFrameNum"]->setUint(frame_num);
+
+  ctx_["sysMaxRays"]->setUint(max_rays);
+  ctx_["sysMaxDepth"]->setUint(max_depth);
+  ctx_["sysSight"]->set3fv((float*)&sight);
+  ctx_["sysSightX"]->set3fv((float*)&sight_x);
+  ctx_["sysSightY"]->set3fv((float*)&sight_y);
+  ctx_["sysViewer"]->set3fv((float*)&viewer);
+  ctx_["sysLightSize"]->setFloat(light_size);
+  ctx_["sysLenseBlur"]->setFloat(lense_blur);
+  ctx_["sysFocusedDistance"]->setFloat(focused_distance);
+  ctx_["sysBatchSize"]->setUint(x_batch);
+  ctx_["sysMaxInternalReflections"]->setUint(max_internal_reflections);
+  ctx_["sysRefractionIndex"]->setFloat(glass_refraction_index);
+  ctx_["sysAbsorption"]->set3fv((float*)&absorption);
+}
+
+bool OpenglRenderer::setup() {
+  initRenderer();
 
   // set up shaders and geometry for full-screen quad
   // moved code to gl_utils.cpp
   quad_vao = create_quad_vao();
   quad_program = create_quad_program();
-
-  ray_program = 0;
-  { // create the compute shader
-    GLuint ray_shader = glCreateShader( GL_COMPUTE_SHADER );
-    glShaderSource( ray_shader, 1, &cs, NULL );
-    glCompileShader( ray_shader );
-    ( check_shader_errors( ray_shader ) ); // code moved to gl_utils.cpp
-    ray_program = glCreateProgram();
-    glAttachShader( ray_program, ray_shader );
-    glLinkProgram( ray_program );
-    ( check_program_errors( ray_program ) ); // code moved to gl_utils.cpp
-  }
 
   // texture handle and dimensions
   tex_output = 0;
@@ -314,48 +386,12 @@ bool OpenglRenderer::setup() {
     glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE );
     glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE );
     // linear allows us to scale the window up retaining reasonable quality
-    glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR );
-    glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR );
+    glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST );
+    glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST );
     // same internal format as compute shader input
     glTexImage2D( GL_TEXTURE_2D, 0, GL_RGBA32F, width_, height_, 0, GL_RGBA, GL_FLOAT,
         NULL );
-    // bind to image unit so can write to specific pixels from the shader
-    glBindImageTexture( 0, tex_output, 0, GL_FALSE, 0, GL_READ_WRITE, GL_RGBA32F );
   }
-
-  { // query up the workgroups
-    int work_grp_size[3], work_grp_inv;
-    // maximum global work group (total work in a dispatch)
-    glGetIntegeri_v( GL_MAX_COMPUTE_WORK_GROUP_COUNT, 0, &work_grp_size[0] );
-    glGetIntegeri_v( GL_MAX_COMPUTE_WORK_GROUP_COUNT, 1, &work_grp_size[1] );
-    glGetIntegeri_v( GL_MAX_COMPUTE_WORK_GROUP_COUNT, 2, &work_grp_size[2] );
-    printf( "max global (total) work group size x:%i y:%i z:%i\n", work_grp_size[0],
-        work_grp_size[1], work_grp_size[2] );
-    // maximum local work group (one shader's slice)
-    glGetIntegeri_v( GL_MAX_COMPUTE_WORK_GROUP_SIZE, 0, &work_grp_size[0] );
-    glGetIntegeri_v( GL_MAX_COMPUTE_WORK_GROUP_SIZE, 1, &work_grp_size[1] );
-    glGetIntegeri_v( GL_MAX_COMPUTE_WORK_GROUP_SIZE, 2, &work_grp_size[2] );
-    printf( "max local (in one shader) work group sizes x:%i y:%i z:%i\n",
-        work_grp_size[0], work_grp_size[1], work_grp_size[2] );
-    // maximum compute shader invocations (x * y * z)
-    glGetIntegerv( GL_MAX_COMPUTE_WORK_GROUP_INVOCATIONS, &work_grp_inv );
-    printf( "max computer shader invocations %i\n", work_grp_inv );
-  }
-
-  // Init inputs
-  glUseProgram( ray_program );
-  for (size_t i = 0; i < LENGTH(model_inputs); i++) {
-    GLint location = glGetUniformLocation(ray_program, model_inputs[i].name);
-    if (location == -1) {
-      std::cerr << "Location " << model_inputs[i].name
-        << " undefined: " << SDL_GetError() << endl;
-      return false;
-    }
-    inputs_.push_back(location);
-  }
-  bindTexture(0, *floor_tex);
-  bindTexture(1, *wall_tex);
-  bindTexture(2, *ceiling_tex);
 
   glUseProgram( quad_program );
   post_processor_mul_ = glGetUniformLocation(quad_program, "mul");
@@ -442,8 +478,6 @@ bool OpenglRenderer::WantCaptureKeyboard() {
   return io_ != nullptr && io_->WantCaptureKeyboard;
 }
 
-extern int x_batch;
-
 bool show_demo_window = false;
 bool show_settings = true;
 vec3 clear_color;
@@ -500,73 +534,17 @@ void OpenglRenderer::draw() {
     ImGui::End();
   }
 
-  glUseProgram( ray_program );
-  for (size_t i = 0; i < LENGTH(model_inputs); i++) {
-    const ModelInput& input = model_inputs[i];
-    switch(input.type) {
-      case IN_VEC3:
-        {
-          const vec3* value = (vec3*) input.value_ptr;
-          glUniform3f(inputs_[i], value->x, value->y, value->z);
-//          printf("Set %s to (%f,%f,%f)\n", input.name,value->x, value->y, value->z);
-          break;
-        }
-      case IN_INT:
-        {
-          const int* value = (int*) input.value_ptr;
-          glUniform1i(inputs_[i], *value);
-          break;
-        }
-      case IN_FLOAT:
-        {
-          const float* value = (float*) input.value_ptr;
-          glUniform1f(inputs_[i], *value);
-          break;
-        }
-    }
-  }
-  char field_name[64];
-  for (size_t i = 0; i < LENGTH(balls); i++) {
-#define SET_ARRAY_FIELD(name, field, type, conv) {              \
-    snprintf(field_name, 64, #name "[%ld]." #field, i);         \
-    GLint loc = glGetUniformLocation(ray_program, field_name);  \
-    if (loc == -1) {                                            \
-      std::cerr << "Location " << field_name                    \
-        << " undefined: " << SDL_GetError() << endl;            \
-    } else {                                                    \
-      glUniform##type(loc, 1, conv name[i].field);              \
-    }                                                           \
-  }
-    SET_ARRAY_FIELD(balls, position_, 3fv, (float*)&)
-    SET_ARRAY_FIELD(balls, color_, 3fv, (float*)&)
-    SET_ARRAY_FIELD(balls, material_.diffuse_ammount_, 1fv, &)
-    SET_ARRAY_FIELD(balls, material_.specular_exponent_, 1fv, &)
-    SET_ARRAY_FIELD(balls, size_, 1fv, &)
-    balls[i].size2_ = balls[i].size_ * balls[i].size_;
-    balls[i].inv_size_ = 1.f / balls[i].size_;
-    SET_ARRAY_FIELD(balls, size2_, 1fv, &)
-    SET_ARRAY_FIELD(balls, inv_size_, 1fv, &)
+  ctx_["sysFrameNum"]->setUint(frame_num);
+  ctx_["sysMaxRays"]->setUint(max_rays);
 
-    if (i == 0) {
-      bbox.a_ = balls[i].position_ - vec3(balls[i].size_);
-      bbox.b_ = balls[i].position_ + vec3(balls[i].size_);
-    } else {
-      bbox.a_ = min(bbox.a_, balls[i].position_ - vec3(balls[i].size_));
-      bbox.b_ = max(bbox.b_, balls[i].position_ + vec3(balls[i].size_));
-    }
-  }
-#define SET_FIELD(name, field, type, conv) {                          \
-    GLint loc = glGetUniformLocation(ray_program, #name "." #field);  \
-    glUniform##type(loc, 1, conv name.field);                         \
-  }
-  SET_FIELD(bbox, a_, 3fv, (float*) &)
-  SET_FIELD(bbox, b_, 3fv, (float*) &)
-  SET_FIELD(room, a_, 3fv, (float*) &)
-  SET_FIELD(room, b_, 3fv, (float*) &)
-
-  // launch compute shaders!
-  glDispatchCompute(width_ / x_batch, height_, 1 );
+  ctx_->launch(0, width_ / x_batch, height_);
   ImGui::Render();
+
+  glActiveTexture( GL_TEXTURE0 );
+  glBindTexture( GL_TEXTURE_2D, tex_output );
+  const void* data = bufferOutput_->map(0, RT_BUFFER_MAP_READ);
+  glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, (GLsizei) width_, (GLsizei) height_, 0, GL_RGBA, GL_FLOAT, data); // RGBA32F
+  bufferOutput_->unmap();
 
   // prevent sampling befor all writes to image are done
   glMemoryBarrier( GL_SHADER_IMAGE_ACCESS_BARRIER_BIT );

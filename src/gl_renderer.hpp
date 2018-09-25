@@ -7,6 +7,7 @@
 #include <GL/glew.h>
 #include "imgui/imgui.h"
 
+#include <optixu/optixpp_namespace.h>
 
 #include "renderer.hpp"
 #include "texture.hpp"
@@ -19,6 +20,7 @@ class OpenglRenderer : public Renderer {
   static std::unique_ptr<Renderer> Create(
       int window_width, int window_height);
   bool setup();
+  void initRenderer();
   void draw() override;
   virtual void reset_accumulate() override;
   bool WantCaptureMouse() override;
@@ -34,11 +36,13 @@ class OpenglRenderer : public Renderer {
   int height_;
   std::map<int, std::vector<unsigned char>> textures;
 
-  GLuint ray_program;
   GLuint quad_vao;
   GLuint quad_program;
   GLuint tex_output;
 
-  std::vector<GLint> inputs_;
   GLint post_processor_mul_;
+  optix::Context ctx_;
+  optix::Program ray_prog_;
+  optix::Program exc_prog_;
+  optix::Buffer  bufferOutput_;
 };

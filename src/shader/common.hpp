@@ -2,20 +2,16 @@
 #define __COMMON_H__ 1
 
 // Common between shader.h and recursion.h
-#include "software.h"
+#include "software.hpp"
 
 #define INPUT(type, name, value) HW(uniform) type name = value;
-#include "input.h"
+#include "input.hpp"
 #undef INPUT
 
-#include "struct_input.h"
+#include "struct_input.hpp"
 
 float fov = 0.7;
 int x_batch = 8;
-
-vec3 floor_color = vec3 (0.14, 1.0, 0.14);
-vec3 wall_color = vec3 (0.85, 0.8, 0.48);
-vec3 ceiling_color = vec3 (0.98, 0.98, 0.98);
 
 float light_power = 200.4f;
 vec3 light_pos = vec3(5.0, -8, 3.0);

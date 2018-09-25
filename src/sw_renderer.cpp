@@ -21,7 +21,7 @@ void print(const char*, const char* v) {
     printf("%s\n", v);
 }
 
-#include "shader/shader.h"
+#include "shader/shader.hpp"
 
 std::unique_ptr<Renderer> SoftwareRenderer::Create(int window_width, int window_height) {
   std::unique_ptr<SoftwareRenderer> r(new SoftwareRenderer());

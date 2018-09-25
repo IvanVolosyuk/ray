@@ -16,10 +16,10 @@ class Texture {
     int width;
     int height;
 
-  private:
     std::vector<unsigned char> albedo;
     std::vector<unsigned char> normals;
     std::vector<unsigned char> roughness;
+  private:
 
     std::vector<unsigned char> gl_export;
 };
