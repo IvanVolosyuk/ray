@@ -11,7 +11,7 @@
 #include "struct_input.hpp"
 
 float fov = 0.7;
-int x_batch = 8;
+int x_batch = 1;
 
 float light_power = 200.4f;
 vec3 light_pos = vec3(5.0, -8, 3.0);

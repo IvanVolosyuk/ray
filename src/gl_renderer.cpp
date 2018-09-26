@@ -306,6 +306,8 @@ void loadTexture(optix::Context ctx, const string& name, const Texture& tex) {
 
 }  // namespace
 
+static float denoise_blend = 0;
+
 void OpenglRenderer::initRenderer() {
   ctx_ = optix::Context::create();
   std::vector<int> devices = {0};
@@ -335,11 +337,8 @@ void OpenglRenderer::initRenderer() {
 
   // This demo just writes into the output buffer, so use RT_BUFFER_OUTPUT as type.
   // In case of an OpenGL interop buffer, that is automatically registered with CUDA now! Must unregister/register around size changes.
-  bufferOutput_ = ctx_->createBuffer(RT_BUFFER_OUTPUT);
-  bufferOutput_->setFormat(RT_FORMAT_FLOAT4); // RGBA32F
-  bufferOutput_->setSize(width_, height_);
-
-  ctx_["sysOutputBuffer"]->set(bufferOutput_);
+  bufferResult_ = ctx_->createBuffer(RT_BUFFER_OUTPUT, RT_FORMAT_FLOAT4, width_, height_);
+  ctx_["sysOutputBuffer"]->set(bufferResult_);
 
   ctx_->setRayGenerationProgram(0, ray_prog);
   ctx_->setExceptionProgram(0, exc_prog);
@@ -351,6 +350,41 @@ void OpenglRenderer::initRenderer() {
 //  auto geo = ctx_->createGeometry();
 //  auto group = ctx_->createGeometryGroup();
   ctx_["sysBatchSize"]->setUint(x_batch);
+
+
+  auto anyhit = ctx_->createProgramFromPTXFile("anyhit.ptx", "anyhit");
+
+  auto tonemapStage = ctx_->createBuiltinPostProcessingStage("TonemapperSimple");
+  auto denoiserStage = ctx_->createBuiltinPostProcessingStage("DLDenoiser");
+//        if (trainingDataBuffer)
+//        {
+//            Variable trainingBuff = denoiserStage->declareVariable("training_data_buffer");
+//            trainingBuff->set(trainingDataBuffer);
+//        }
+
+  bufferTonemap_ = ctx_->createBuffer(RT_BUFFER_INPUT_OUTPUT,
+      RT_FORMAT_FLOAT4, width_, height_);
+  ctx_["tone_buf"]->setBuffer(bufferTonemap_);
+  bufferOutput_ = ctx_->createBuffer(
+      RT_BUFFER_OUTPUT, RT_FORMAT_FLOAT4, width_, height_);
+
+  tonemapStage->declareVariable("input_buffer")->set(bufferResult_);
+  tonemapStage->declareVariable("output_buffer")->set(bufferTonemap_);
+  tonemapStage->declareVariable("exposure")->setFloat(0.25f);
+  tonemapStage->declareVariable("gamma")->setFloat(2.2f);
+
+  denoiserStage->declareVariable("input_buffer")->set(bufferTonemap_);
+  denoiserStage->declareVariable("output_buffer")->set(bufferOutput_);
+  denoiseBlend_ = denoiserStage->declareVariable("blend");
+  denoiseBlend_->setFloat(denoise_blend);
+//  denoiserStage->declareVariable("input_albedo_buffer");
+//  denoiserStage->declareVariable("input_normal_buffer");
+
+  commandListDenoiser_ = ctx_->createCommandList();
+  commandListDenoiser_->appendLaunch(0, width_, height_);
+  commandListDenoiser_->appendPostprocessingStage(tonemapStage, width_, height_);
+  commandListDenoiser_->appendPostprocessingStage(denoiserStage, width_, height_);
+  commandListDenoiser_->finalize();
 }
 
 bool OpenglRenderer::setup() {
@@ -486,6 +520,9 @@ void OpenglRenderer::draw() {
     ImGui::Checkbox("Demo Window", &show_demo_window);
 
     ImGui::DragFloat("Brightness", &brightness, 0.05, 0.01f, 100.0f);
+    if (ImGui::SliderFloat("Denoise", &denoise_blend, 0.0f, 1.0f)) {
+      denoiseBlend_->setFloat(denoise_blend);
+    }
 
     a |= ImGui::Checkbox("No light rays", &no_light_rays);
     a |= ImGui::DragFloat("Lense Size", &lense_blur, 0.0001, 0.0001f, 0.1f, "%0.4f");
@@ -580,6 +617,7 @@ void OpenglRenderer::draw() {
   ctx_["sysViewer"]->set3fv((float*)&viewer);
 
   ctx_->launch(0, width_ / x_batch, height_);
+  commandListDenoiser_->execute();
   ImGui::Render();
 
   glActiveTexture( GL_TEXTURE0 );
@@ -594,7 +632,8 @@ void OpenglRenderer::draw() {
 //  glClear( GL_COLOR_BUFFER_BIT );
   glUseProgram( quad_program );
   frame_num += max_rays;
-  glUniform1f(post_processor_mul_, 1.f/frame_num * brightness);
+//  glUniform1f(post_processor_mul_, 1.f/frame_num * brightness);
+  glUniform1f(post_processor_mul_, brightness);
   glBindVertexArray( quad_vao );
   glActiveTexture( GL_TEXTURE0 );
   glBindTexture( GL_TEXTURE_2D, tex_output );

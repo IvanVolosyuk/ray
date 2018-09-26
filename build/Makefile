@@ -22,7 +22,7 @@ vpath %.cu ../src/optix
 .PHONY: all
 .PHONY: clean
 
-all: ray shader.comp ray.ptx exception.ptx
+all: ray shader.comp ray.ptx exception.ptx anyhit.ptx
 
 ray: $(OBJ)
 	$(CXX) -o $@ $(OBJ) $(LDFLAGS)
@@ -52,7 +52,7 @@ shader.comp: shader.comp.in
 	cat $< >> $@
 
 %.ptx : %.cu
-	/usr/local/cuda/bin/nvcc --ptx --compile $< --include-path /home/ivan/experiments/NVIDIA-OptiX-SDK-5.1.0-linux64/include
+	/usr/local/cuda/bin/nvcc --ptx --compile $< --include-path ../src,/home/ivan/experiments/NVIDIA-OptiX-SDK-5.1.0-linux64/include
 
 clean:
 	$(RM) ray $(OBJ) shader.comp 

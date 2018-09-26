@@ -45,5 +45,9 @@ class OpenglRenderer : public Renderer {
   optix::Context ctx_;
   optix::Program ray_prog_;
   optix::Program exc_prog_;
+  optix::Buffer  bufferResult_;
+  optix::Buffer  bufferTonemap_;
   optix::Buffer  bufferOutput_;
+  optix::CommandList commandListDenoiser_;
+  optix::Variable denoiseBlend_;
 };

@@ -1,11 +1,4 @@
-#define RT_USE_TEMPLATED_RTCALLABLEPROGRAM 1
-
-#include <optix.h>
-#include <optixu/optixu_math_namespace.h>
-
-#ifndef RT_FUNCTION
-#define RT_FUNCTION __forceinline__ __device__
-#endif
+#include "optix/shared.h"
 
 #define LENGTH(a) (sizeof(a)/sizeof(a[0]))
 #define MAX_FLOAT 1e37
@@ -720,9 +713,6 @@ RT_PROGRAM void ray() {
 
   for (int xx = 0; xx < sysBatchSize; xx++) {
     float4 pixel = float4{0,0,0,0};
-    if (sysFrameNum != 0) {
-      pixel = sysOutputBuffer[pixel_coords];
-    }
     for (int i = 0; i < sysMaxRays; i++) {
       // no normalize here to preserve focal plane
       float3 focused_ray = (ray + dx * antialiasing(seed) + dy * antialiasing(seed));
@@ -731,9 +721,10 @@ RT_PROGRAM void ray() {
       float a = lense_gen_a(seed) * 1 * M_PI;
       float3 me = origin + sysSightX * (r * cos(a)) + sysSightY * (r * sin(a));
       float3 new_ray = normalize(focused_point - me);
-      pixel += make_float4(trace_new(new_ray, me, seed), 0);
+      pixel += make_float4(trace_new(new_ray, me, seed), 1);
     }
-    sysOutputBuffer[pixel_coords] = pixel;
+    float a = sysMaxRays / float(sysFrameNum + sysMaxRays);
+    sysOutputBuffer[pixel_coords] = lerp(sysOutputBuffer[pixel_coords], pixel / sysMaxRays, a);
     pixel_coords.x++;
     ray += dx;
   }
