@@ -11,6 +11,8 @@ using namespace optix;
 using namespace std;
 
 rtBuffer<float4, 2> sysOutputBuffer; // RGBA32F
+rtBuffer<float4, 2> sysAlbedoBuffer; // RGBA32F
+rtBuffer<float4, 2> sysOutNormalBuffer;
 
 #define TEXTURE(wall)                                   \
 rtTextureSampler<float4, 2> wall##_albedo;              \
@@ -414,27 +416,6 @@ Hit light_hit(const float3 norm_ray, const float3 origin) {
 }
 
 RT_FUNCTION
-float3 light_trace(
-    const Hit p,
-    float3 norm_ray,
-    float3 origin,
-    float distance_from_eye) {
-  float distance_from_origin = p.closest_point_distance_from_viewer_ -
-    sqrt(sysLightSize2 - p.distance_from_object_center2_);
-
-//  float3 intersection = origin + norm_ray * distance_from_origin;
-//  float3 distance_from_light_vector = intersection - light_pos;
-
-//  float3 normal = distance_from_light_vector * light_inv_size;
-//  float angle = -dot(norm_ray, normal);
-  float total_distance = distance_from_eye + distance_from_origin;
-
-  float3 res = light_color * (1.f / (total_distance * total_distance + 1e-12f));
-//  assert(isfinite(res.size2()));
-  return res;
-}
-
-RT_FUNCTION
 float3 scatter(uint& seed, const float3 v, float specular_exponent) {
   // https://en.wikipedia.org/wiki/Specular_highlight#Phong_distribution
   float N = specular_exponent;
@@ -462,9 +443,13 @@ float3 scatter(uint& seed, const float3 v, float specular_exponent) {
 
 #define FLAG_TERMINATE 1
 #define FLAG_NO_SECONDARY 2
+#define FLAG_ALBEDO 4
 
 struct RayData {
   float3 intensity;
+  float3 albedo;
+  float3 result_normal;
+
   float3 origin;
   float3 norm_ray;
   // FIXME:add norm_ray_inv as well
@@ -481,6 +466,11 @@ void compute_light(
     const float3 specular_color,
     const Material m,
     const float3 normal) {
+  if ((ray.flags & FLAG_ALBEDO) == 0) {
+    ray.flags |= FLAG_ALBEDO;
+    ray.albedo = color;
+    ray.result_normal = normal;
+  }
   if ((ray.flags & FLAG_NO_SECONDARY) == 0) {
     float3 light_rnd_pos = light_pos + light_distr(ray.seed);
 
@@ -527,22 +517,23 @@ void compute_light(
 }
 
 RT_FUNCTION
-float3 light_trace_new(
+void light_trace_new(
     const Hit p,
     REF(RayData) ray) {
   float distance_from_origin = p.closest_point_distance_from_viewer_ -
     sqrt(sysLightSize2 - p.distance_from_object_center2_);
 
-//  float3 intersection = origin + norm_ray * distance_from_origin;
-//  float3 distance_from_light_vector = intersection - light_pos;
-
-//  float3 normal = distance_from_light_vector * light_inv_size;
-//  float angle = -dot(norm_ray, normal);
   float total_distance = ray.distance_from_eye + distance_from_origin;
 
-  float3 res = ray.intensity + light_color * ray.color_filter * (1.f / (total_distance * total_distance + 1e-12f));
-//  assert(isfinite(res.size2()));
-  return res;
+  ray.intensity += light_color * ray.color_filter * (1.f / (total_distance * total_distance + 1e-12f));
+  if ((ray.flags & FLAG_ALBEDO) == 0) {
+    ray.flags |= FLAG_ALBEDO;
+    ray.albedo = normalize(light_color);
+    float3 intersection = ray.origin + ray.norm_ray * distance_from_origin;
+    float3 distance_from_light_vector = intersection - light_pos;
+    float3 normal = distance_from_light_vector / sysLightSize;
+    ray.result_normal = normal;
+  }
 }
 
 RT_FUNCTION
@@ -636,13 +627,18 @@ void ball_trace (
   if (reflect_gen(ray.seed) < reflect_ammount) {
     make_reflection(ray, ball.color_, ball.material_, normal);
   } else {
+    if ((ray.flags & FLAG_ALBEDO) == 0) {
+      ray.flags |= FLAG_ALBEDO;
+      ray.albedo = ball.color_;
+      ray.result_normal = normal;
+    }
     make_refraction(ray, normal, ball.size_);
   }
 }
 
 
 RT_FUNCTION
-float3 trace (RayData ray) {
+void trace (RayData& ray) {
 
   int depth = 0;
   while (true) {
@@ -651,7 +647,8 @@ float3 trace (RayData ray) {
     Hit light = light_hit(ray.norm_ray, ray.origin);
     if (light.closest_point_distance_from_viewer_ <
         hit.closest_point_distance_from_viewer_) {
-      return light_trace_new(light, ray);
+      light_trace_new(light, ray);
+      return;
     }
 
     if (depth == sysMaxDepth - 1) ray.flags |= FLAG_TERMINATE;
@@ -661,33 +658,9 @@ float3 trace (RayData ray) {
     } else {
       ball_trace(ray, hit);
     }
-    if ((ray.flags & FLAG_TERMINATE) != 0) return ray.intensity;
+    if ((ray.flags & FLAG_TERMINATE) != 0) return;
     depth++;
   }
-}
-
-RT_FUNCTION
-float3 trace_new(
-    const float3 norm_ray,
-    const float3 origin,
-    uint& seed) {
-  RayData ray;
-  ray.origin = origin;
-  ray.norm_ray = norm_ray;
-  ray.distance_from_eye = 0;
-  ray.color_filter = float3{1,1,1};
-  ray.intensity = float3{0,0,0};
-  ray.flags = sysTracerFlags;
-  ray.seed = seed;
-
-  float3 color = trace(ray);
-  seed = ray.seed;
-  if (color.x < 0 || color.y < 0 || color.z < 0
-      || isnan(color.x) || isnan(color.y) || isnan(color.z)
-      || !isfinite(color.x) || !isfinite(color.z) || !isfinite(color.z)) {
-    return make_float3(0);
-  }
-  return color;
 }
 
 RT_PROGRAM void ray() {
@@ -710,9 +683,13 @@ RT_PROGRAM void ray() {
   float3 origin = sysViewer;
   uint seed = tea(pixel_coords.y * dims.x + pixel_coords.x, sysFrameNum);
 
+  float weight = sysMaxRays / float(sysFrameNum + sysMaxRays);
 
   for (int xx = 0; xx < sysBatchSize; xx++) {
-    float4 pixel = float4{0,0,0,0};
+    float4 total_intensity = make_float4(0);
+    float4 total_albedo = make_float4(0);
+    float3 total_normal = make_float3(0);
+
     for (int i = 0; i < sysMaxRays; i++) {
       // no normalize here to preserve focal plane
       float3 focused_ray = (ray + dx * antialiasing(seed) + dy * antialiasing(seed));
@@ -721,10 +698,38 @@ RT_PROGRAM void ray() {
       float a = lense_gen_a(seed) * 1 * M_PI;
       float3 me = origin + sysSightX * (r * cos(a)) + sysSightY * (r * sin(a));
       float3 new_ray = normalize(focused_point - me);
-      pixel += make_float4(trace_new(new_ray, me, seed), 1);
+
+      RayData ray;
+      ray.origin = me;
+      ray.norm_ray = new_ray;
+      ray.distance_from_eye = 0;
+      ray.color_filter = float3{1,1,1};
+      ray.intensity = float3{0,0,0};
+      ray.flags = sysTracerFlags;
+      ray.seed = seed;
+
+      trace(ray);
+      if (ray.intensity.x < 0 || ray.intensity.y < 0 || ray.intensity.z < 0
+          || isnan(ray.intensity.x) || isnan(ray.intensity.y) || isnan(ray.intensity.z)
+          || !isfinite(ray.intensity.x) || !isfinite(ray.intensity.z) || !isfinite(ray.intensity.z)) {
+        ray.intensity = make_float3(0);
+      }
+      total_intensity += make_float4(ray.intensity, 1);
+      total_albedo += make_float4(ray.albedo, 1);
+      total_normal += ray.result_normal;
+      seed = ray.seed;
     }
-    float a = sysMaxRays / float(sysFrameNum + sysMaxRays);
-    sysOutputBuffer[pixel_coords] = lerp(sysOutputBuffer[pixel_coords], pixel / sysMaxRays, a);
+    float scale = 1.f / sysMaxRays;
+    sysOutputBuffer[pixel_coords] = lerp(sysOutputBuffer[pixel_coords], total_intensity * scale, weight);
+    sysAlbedoBuffer[pixel_coords] = lerp(sysAlbedoBuffer[pixel_coords], total_albedo * scale, weight);
+
+    float3 normal_scaled = total_normal * scale;
+    // FIXME: used matrix instead
+    float4 normal_screen = make_float4(
+        dot(normal_scaled, sysSightX),
+        -dot(normal_scaled, sysSightY),
+        dot(normal_scaled, sysSight), 0.f);
+    sysOutNormalBuffer[pixel_coords] = lerp(sysOutNormalBuffer[pixel_coords], normal_screen, weight);
     pixel_coords.x++;
     ray += dx;
   }

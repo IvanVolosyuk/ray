@@ -33,6 +33,8 @@ using std::string;
 using std::endl;
 
 extern int x_batch;
+static float tone_exposure = 0.25;
+static float tone_gamma = 2.2;
 
 constexpr int OPENGL_MAJOR_VERSION = 4;
 constexpr int OPENGL_MINOR_VERSION = 5;
@@ -132,6 +134,10 @@ out vec4 fc;
 
 void main () {
   vec4 c = sqrt(texture (img, st) * mul);
+  // FIXME
+  if (c.x < 0) c.x = 0;
+  if (c.y < 0) c.y = 0;
+  if (c.z < 0) c.z = 0;
   float m =  max(c.x, max(c.y, c.z));
   if (m < 1) {
     fc = c;
@@ -339,6 +345,10 @@ void OpenglRenderer::initRenderer() {
   // In case of an OpenGL interop buffer, that is automatically registered with CUDA now! Must unregister/register around size changes.
   bufferResult_ = ctx_->createBuffer(RT_BUFFER_OUTPUT, RT_FORMAT_FLOAT4, width_, height_);
   ctx_["sysOutputBuffer"]->set(bufferResult_);
+  bufferAlbedo_ = ctx_->createBuffer(RT_BUFFER_OUTPUT, RT_FORMAT_FLOAT4, width_, height_);
+  ctx_["sysAlbedoBuffer"]->set(bufferAlbedo_);
+  bufferNormal_ = ctx_->createBuffer(RT_BUFFER_OUTPUT, RT_FORMAT_FLOAT4, width_, height_);
+  ctx_["sysOutNormalBuffer"]->set(bufferNormal_);
 
   ctx_->setRayGenerationProgram(0, ray_prog);
   ctx_->setExceptionProgram(0, exc_prog);
@@ -370,15 +380,23 @@ void OpenglRenderer::initRenderer() {
 
   tonemapStage->declareVariable("input_buffer")->set(bufferResult_);
   tonemapStage->declareVariable("output_buffer")->set(bufferTonemap_);
-  tonemapStage->declareVariable("exposure")->setFloat(0.25f);
-  tonemapStage->declareVariable("gamma")->setFloat(2.2f);
+  exposure_ = tonemapStage->declareVariable("exposure");
+  exposure_->setFloat(tone_exposure);
+  gamma_ = tonemapStage->declareVariable("gamma");
+  gamma_->setFloat(tone_gamma);
+
 
   denoiserStage->declareVariable("input_buffer")->set(bufferTonemap_);
   denoiserStage->declareVariable("output_buffer")->set(bufferOutput_);
   denoiseBlend_ = denoiserStage->declareVariable("blend");
   denoiseBlend_->setFloat(denoise_blend);
-//  denoiserStage->declareVariable("input_albedo_buffer");
-//  denoiserStage->declareVariable("input_normal_buffer");
+  denoiserStage->declareVariable("input_albedo_buffer")->set(bufferAlbedo_);
+//  denoiserStage->declareVariable("input_normal_buffer")->set(bufferNormal_);
+
+  commandListTonemap_ = ctx_->createCommandList();
+  commandListTonemap_->appendLaunch(0, width_, height_);
+  commandListTonemap_->appendPostprocessingStage(tonemapStage, width_, height_);
+  commandListTonemap_->finalize();
 
   commandListDenoiser_ = ctx_->createCommandList();
   commandListDenoiser_->appendLaunch(0, width_, height_);
@@ -502,6 +520,7 @@ vec3 clear_color;
 vec3 absorption_color = vec3(0.17, 0.17, 0.53);
 float absorption_intensity = 1.0f;
 bool no_light_rays = false;
+int output_selector = 3;
 
 void OpenglRenderer::draw() {
   ImGui_ImplOpenGL3_NewFrame();
@@ -520,9 +539,16 @@ void OpenglRenderer::draw() {
     ImGui::Checkbox("Demo Window", &show_demo_window);
 
     ImGui::DragFloat("Brightness", &brightness, 0.05, 0.01f, 100.0f);
+    if (ImGui::SliderFloat("Exposure", &tone_exposure, 0.0f, 1.0f)) {
+      exposure_->setFloat(tone_exposure);
+    }
+    if (ImGui::SliderFloat("Gamma", &tone_gamma, 0.0f, 5.0f)) {
+      gamma_->setFloat(tone_gamma);
+    }
     if (ImGui::SliderFloat("Denoise", &denoise_blend, 0.0f, 1.0f)) {
       denoiseBlend_->setFloat(denoise_blend);
     }
+    ImGui::SliderInt("Output", &output_selector, 0, 4);
 
     a |= ImGui::Checkbox("No light rays", &no_light_rays);
     a |= ImGui::DragFloat("Lense Size", &lense_blur, 0.0001, 0.0001f, 0.1f, "%0.4f");
@@ -617,14 +643,27 @@ void OpenglRenderer::draw() {
   ctx_["sysViewer"]->set3fv((float*)&viewer);
 
   ctx_->launch(0, width_ / x_batch, height_);
-  commandListDenoiser_->execute();
+  switch (output_selector) {
+    case 2: commandListTonemap_->execute(); break;
+    case 3: commandListDenoiser_->execute(); break;
+    default: break;
+  }
   ImGui::Render();
 
   glActiveTexture( GL_TEXTURE0 );
   glBindTexture( GL_TEXTURE_2D, tex_output );
-  const void* data = bufferOutput_->map(0, RT_BUFFER_MAP_READ);
+  optix::Buffer selected;
+  switch (output_selector) {
+    case 0: selected = bufferAlbedo_; break;
+    case 1: selected = bufferResult_; break;
+    case 2: selected = bufferTonemap_; break;
+    case 3: selected = bufferOutput_; break;
+    case 4: selected = bufferNormal_; break;
+    default: selected = bufferOutput_; break;
+  }
+  const void* data = selected->map(0, RT_BUFFER_MAP_READ);
   glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, (GLsizei) width_, (GLsizei) height_, 0, GL_RGBA, GL_FLOAT, data); // RGBA32F
-  bufferOutput_->unmap();
+  selected->unmap();
 
   // prevent sampling befor all writes to image are done
   glMemoryBarrier( GL_SHADER_IMAGE_ACCESS_BARRIER_BIT );
@@ -633,7 +672,7 @@ void OpenglRenderer::draw() {
   glUseProgram( quad_program );
   frame_num += max_rays;
 //  glUniform1f(post_processor_mul_, 1.f/frame_num * brightness);
-  glUniform1f(post_processor_mul_, brightness);
+  glUniform1f(post_processor_mul_, output_selector == 0 || output_selector == 4? 1 : brightness);
   glBindVertexArray( quad_vao );
   glActiveTexture( GL_TEXTURE0 );
   glBindTexture( GL_TEXTURE_2D, tex_output );
