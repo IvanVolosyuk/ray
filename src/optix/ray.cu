@@ -45,6 +45,7 @@ rtDeclareVariable(uint,   sysMaxInternalReflections, , );
 rtDeclareVariable(float,  sysRefractionIndex, , );
 rtDeclareVariable(float3, sysAbsorption, , make_float3(0.17,0.17,0.53));
 rtDeclareVariable(uint,   sysTracerFlags, , );
+rtDeclareVariable(float, sysTime, , );
 
 //rtDeclareVariable(optix::Ray, theRay, rtCurrentRay, );
 
@@ -115,6 +116,7 @@ __device__
 const Hit no_hit = Hit{-1, max_distance, 0};
 
 
+template<int N>
 RT_FUNCTION
 uint tea(uint v0, uint v1) {
   uint k0 = 0xA341316C;
@@ -123,14 +125,10 @@ uint tea(uint v0, uint v1) {
   uint k3 = 0x7E95761E;
   uint sum = 0x9e3779b9;
 
-  v0 +=((v1 << 4)+k0) ^ (v1 + sum) ^ ((v1 >> 5)+k1);
-  v1 +=((v0 << 4)+k2) ^ (v0 + sum) ^ ((v0 >> 5)+k3);
-  v0 +=((v1 << 4)+k0) ^ (v1 + sum) ^ ((v1 >> 5)+k1);
-  v1 +=((v0 << 4)+k2) ^ (v0 + sum) ^ ((v0 >> 5)+k3);
-  v0 +=((v1 << 4)+k0) ^ (v1 + sum) ^ ((v1 >> 5)+k1);
-  v1 +=((v0 << 4)+k2) ^ (v0 + sum) ^ ((v0 >> 5)+k3);
-  v0 +=((v1 << 4)+k0) ^ (v1 + sum) ^ ((v1 >> 5)+k1);
-  v1 +=((v0 << 4)+k2) ^ (v0 + sum) ^ ((v0 >> 5)+k3);
+  for (int i = 0; i < N; i++) {
+    v0 +=((v1 << 4)+k0) ^ (v1 + sum) ^ ((v1 >> 5)+k1);
+    v1 +=((v0 << 4)+k2) ^ (v0 + sum) ^ ((v0 >> 5)+k3);
+  }
   return v0;
 }
 
@@ -389,9 +387,32 @@ RoomHit room_hit(const float3 norm_ray, const float3 origin) {
         V = float3{0, 1, 0};
         FINISH(ceiling, intersection.x * 0.2f, intersection.y * 0.2f);
       } else {
-        U = float3{1, 0, 0};
-        V = float3{0, 1, 0};
-        FINISH(floor, intersection.x * 0.2f, intersection.y * 0.2f);
+        float3 intersection = origin + norm_ray * min_dist;
+        float3 n{0.f,0.f,1.f};
+        for (int dx = -1; dx < 2; dx++) {
+          for (int dy = -1; dy < 2; dy++) {
+            int2 pos {int(floor(intersection.x)) + dx, int(floor(intersection.y)) + dy};
+            uint seed = tea<1>(pos.x, pos.y);
+            float duration = 0.9 + rand1(seed) * 0.1;
+            float start = floor(sysTime / duration) * duration;
+            seed = tea<1>(pos.x, pos.y + uint(start * 3));
+            float radius = sysTime - start;
+            float3 fpos = make_float3(make_float2(pos) + rand2(seed), 0);
+            float3 vec = intersection - fpos;
+            float dist = sqrt(dot(vec, vec));
+            float dist_from_radius = abs(dist - radius);
+            float intensity = max(0.f, 0.1f - 1 * dist_from_radius) * (0.9 - radius);
+
+            float3 dir = vec / dist;
+            n+= dir * (sin(dist_from_radius * 100) * intensity);
+          }
+        }
+        float3 reflection = norm_ray - n * (dot(norm_ray, n) * 2);
+        float3 color = make_float3(1);
+        Material m;
+        m.diffuse_ammount_ = 0;
+        m.specular_exponent_ = 100000;
+        return RoomHit{min_dist, intersection, n, reflection, color, m};
       }
     }
   }
@@ -681,7 +702,7 @@ RT_PROGRAM void ray() {
 
   float3 ray = sysSight + xoffset * x + yoffset * y ;
   float3 origin = sysViewer;
-  uint seed = tea(pixel_coords.y * dims.x + pixel_coords.x, sysFrameNum);
+  uint seed = tea<4>(pixel_coords.y * dims.x + pixel_coords.x, sysFrameNum);
 
   float weight = sysMaxRays / float(sysFrameNum + sysMaxRays);
 

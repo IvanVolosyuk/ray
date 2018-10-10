@@ -501,6 +501,7 @@ std::unique_ptr<Renderer> OpenglRenderer::Create(int window_width, int window_he
 
 void OpenglRenderer::reset_accumulate() {
   frame_num = 0;
+  ctx_["sysTime"]->setFloat((SDL_GetTicks()  | (1 << 25))/ 1000.f);
 }
 
 void OpenglRenderer::ProcessEvent(SDL_Event* event) {
