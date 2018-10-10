@@ -499,9 +499,10 @@ std::unique_ptr<Renderer> OpenglRenderer::Create(int window_width, int window_he
   return r;
 }
 
+bool freeze_waves = false;
+
 void OpenglRenderer::reset_accumulate() {
   frame_num = 0;
-  ctx_["sysTime"]->setFloat((SDL_GetTicks()  | (1 << 25))/ 1000.f);
 }
 
 void OpenglRenderer::ProcessEvent(SDL_Event* event) {
@@ -522,6 +523,7 @@ vec3 absorption_color = vec3(0.17, 0.17, 0.53);
 float absorption_intensity = 1.0f;
 bool no_light_rays = false;
 int output_selector = 3;
+bool no_accumulate = false;
 
 void OpenglRenderer::draw() {
   ImGui_ImplOpenGL3_NewFrame();
@@ -538,6 +540,8 @@ void OpenglRenderer::draw() {
     ImGui::Begin("Settings");
 
     ImGui::Checkbox("Demo Window", &show_demo_window);
+    ImGui::Checkbox("Freeze Waves", &freeze_waves);
+    ImGui::Checkbox("No no_accumulate", &no_accumulate);
 
     ImGui::DragFloat("Brightness", &brightness, 0.05, 0.01f, 100.0f);
     if (ImGui::SliderFloat("Exposure", &tone_exposure, 0.0f, 1.0f)) {
@@ -636,6 +640,12 @@ void OpenglRenderer::draw() {
     requireInit = false;
   }
 
+  if (no_accumulate) {
+    reset_accumulate();
+  }
+  if (frame_num == 0 && !freeze_waves) {
+    ctx_["sysTime"]->setFloat((SDL_GetTicks()  | (1 << 25))/ 1000.f);
+  }
   ctx_["sysFrameNum"]->setUint(frame_num);
   ctx_["sysMaxRays"]->setUint(max_rays);
   ctx_["sysSight"]->set3fv((float*)&sight);

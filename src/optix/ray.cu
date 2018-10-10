@@ -401,12 +401,13 @@ RoomHit room_hit(const float3 norm_ray, const float3 origin) {
             float3 vec = intersection - fpos;
             float dist = sqrt(dot(vec, vec));
             float dist_from_radius = abs(dist - radius);
-            float intensity = max(0.f, 0.1f - 1 * dist_from_radius) * (0.9 - radius);
+            float intensity = max(0.f, 0.1f - 0.5 * dist_from_radius) * (0.9 - radius);
 
             float3 dir = vec / dist;
-            n+= dir * (sin(dist_from_radius * 100) * intensity);
+            n+= dir * (sin(dist_from_radius * 50) * intensity);
           }
         }
+        n = normalize(n);
         float3 reflection = norm_ray - n * (dot(norm_ray, n) * 2);
         float3 color = make_float3(1);
         Material m;
