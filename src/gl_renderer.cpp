@@ -124,35 +124,14 @@ void main () {
 }
 )";
 
-// this is the quad's fragment shader in an ugly C string
 const char *frag_shader_str =
 R"(#version 430
 in vec2 st;
 uniform sampler2D img;
-uniform float mul;
 out vec4 fc;
 
 void main () {
-  vec4 c = sqrt(texture (img, st) * mul);
-  // FIXME
-  if (c.x < 0) c.x = 0;
-  if (c.y < 0) c.y = 0;
-  if (c.z < 0) c.z = 0;
-  float m =  max(c.x, max(c.y, c.z));
-  if (m < 1) {
-    fc = c;
-    return;
-  }
-  float total = c.x + c.y + c.z;
-  if (total > 3) {
-    fc = vec4(1,1,1,1);
-    return;
-  }
-  float scale = (3 - total) / (3 * m - total);
-  float grey = 1 - scale * m;
-  fc = vec4(grey + scale * c.x,
-                grey + scale * c.y,
-                grey + scale * c.z, 1);
+  fc = texture (img, st);
 }
 )";
 
@@ -524,6 +503,10 @@ float absorption_intensity = 1.0f;
 bool no_light_rays = false;
 int output_selector = 3;
 bool no_accumulate = false;
+float ripple_scale = 1;
+float ripple_low[2] = {-5, -2};
+float ripple_high[2] = { 2, 2};
+
 
 void OpenglRenderer::draw() {
   ImGui_ImplOpenGL3_NewFrame();
@@ -544,7 +527,7 @@ void OpenglRenderer::draw() {
     ImGui::Checkbox("No no_accumulate", &no_accumulate);
 
     ImGui::DragFloat("Brightness", &brightness, 0.05, 0.01f, 100.0f);
-    if (ImGui::SliderFloat("Exposure", &tone_exposure, 0.0f, 1.0f)) {
+    if (ImGui::DragFloat("Exposure", &tone_exposure, 0.01, 0.01f, 100.0f)) {
       exposure_->setFloat(tone_exposure);
     }
     if (ImGui::SliderFloat("Gamma", &tone_gamma, 0.0f, 5.0f)) {
@@ -556,6 +539,9 @@ void OpenglRenderer::draw() {
     ImGui::SliderInt("Output", &output_selector, 0, 4);
 
     a |= ImGui::Checkbox("No light rays", &no_light_rays);
+    a |= ImGui::DragFloat("Ripple Scale", &ripple_scale, 0.1, 0.1, 2.f, "%0.2f");
+    a |= ImGui::DragFloat2("Ripple Low", ripple_low, 0.1, -10., 10.1f, "%0.1f");
+    a |= ImGui::DragFloat2("Ripple High", ripple_high, 0.1, -10., 10.1f, "%0.1f");
     a |= ImGui::DragFloat("Lense Size", &lense_blur, 0.0001, 0.0001f, 0.1f, "%0.4f");
     a |= ImGui::DragFloat("Focus Distance", &focused_distance, 0.05, 0.01f, 10.0f);
     a |= ImGui::DragFloat("Light Size", &light_size, 0.01, 0.01f, 4.0f);
@@ -607,6 +593,9 @@ void OpenglRenderer::draw() {
     absorption = absorption_color * absorption_intensity;
     light_size2 = light_size * light_size;
     ctx_["sysLenseBlur"]->setFloat(lense_blur);
+    ctx_["sysRippleScale"]->setFloat(ripple_scale);
+    ctx_["sysRippleLow"]->set2fv(ripple_low);
+    ctx_["sysRippleHigh"]->set2fv(ripple_high);
     ctx_["sysFocusedDistance"]->setFloat(focused_distance);
     ctx_["sysLightSize"]->setFloat(light_size);
     ctx_["sysLightSize2"]->setFloat(light_size2);

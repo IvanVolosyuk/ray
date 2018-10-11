@@ -46,6 +46,9 @@ rtDeclareVariable(float,  sysRefractionIndex, , );
 rtDeclareVariable(float3, sysAbsorption, , make_float3(0.17,0.17,0.53));
 rtDeclareVariable(uint,   sysTracerFlags, , );
 rtDeclareVariable(float, sysTime, , );
+rtDeclareVariable(float, sysRippleScale, , );
+rtDeclareVariable(float2, sysRippleLow, , );
+rtDeclareVariable(float2, sysRippleHigh, , );
 
 //rtDeclareVariable(optix::Ray, theRay, rtCurrentRay, );
 
@@ -388,23 +391,40 @@ RoomHit room_hit(const float3 norm_ray, const float3 origin) {
         FINISH(ceiling, intersection.x * 0.2f, intersection.y * 0.2f);
       } else {
         float3 intersection = origin + norm_ray * min_dist;
+        if (intersection.x < sysRippleLow.x
+            || intersection.x > sysRippleHigh.x
+            || intersection.y < sysRippleLow.y
+            || intersection.y > sysRippleHigh.y) {
+          U = float3{1, 0, 0};
+          V = float3{0, 1, 0};
+          float u = intersection.x * 0.2f;
+          float v = intersection.y * 0.2f;
+          return room_hit_internal(
+              intersection,
+              norm_ray,
+              normal,
+              U, V,
+              floor_albedo, floor_normals, floor_roughness,
+              u, v, min_dist, floor_specular_exponent, floor_diffuse_ammount);
+        }
         float3 n{0.f,0.f,1.f};
+        float rippleMul = 1 / sysRippleScale;
         for (int dx = -1; dx < 2; dx++) {
           for (int dy = -1; dy < 2; dy++) {
-            int2 pos {int(floor(intersection.x)) + dx, int(floor(intersection.y)) + dy};
+            int2 pos {int(floor(intersection.x * rippleMul)) + dx, int(floor(intersection.y * rippleMul)) + dy};
             uint seed = tea<1>(pos.x, pos.y);
             float duration = 0.9 + rand1(seed) * 0.1;
             float start = floor(sysTime / duration) * duration;
             seed = tea<1>(pos.x, pos.y + uint(start * 3));
             float radius = sysTime - start;
-            float3 fpos = make_float3(make_float2(pos) + rand2(seed), 0);
+            float3 fpos = make_float3((make_float2(pos) + rand2(seed)) * sysRippleScale, 0);
             float3 vec = intersection - fpos;
             float dist = sqrt(dot(vec, vec));
-            float dist_from_radius = abs(dist - radius);
+            float dist_from_radius = abs(dist - radius * sysRippleScale);
             float intensity = max(0.f, 0.1f - 0.5 * dist_from_radius) * (0.9 - radius);
 
             float3 dir = vec / dist;
-            n+= dir * (sin(dist_from_radius * 50) * intensity);
+            n+= dir * (sin(dist_from_radius * 50 * rippleMul) * intensity);
           }
         }
         n = normalize(n);
@@ -466,6 +486,7 @@ float3 scatter(uint& seed, const float3 v, float specular_exponent) {
 #define FLAG_TERMINATE 1
 #define FLAG_NO_SECONDARY 2
 #define FLAG_ALBEDO 4
+#define FLAG_NORMAL 8
 
 struct RayData {
   float3 intensity;
@@ -489,8 +510,13 @@ void compute_light(
     const Material m,
     const float3 normal) {
   if ((ray.flags & FLAG_ALBEDO) == 0) {
-    ray.flags |= FLAG_ALBEDO;
+    if (m.specular_exponent_ < 100000) {
+      ray.flags |= FLAG_ALBEDO;
+    }
     ray.albedo = color;
+  }
+  if ((ray.flags & FLAG_NORMAL) == 0) {
+    ray.flags |= FLAG_NORMAL;
     ray.result_normal = normal;
   }
   if ((ray.flags & FLAG_NO_SECONDARY) == 0) {
@@ -551,6 +577,9 @@ void light_trace_new(
   if ((ray.flags & FLAG_ALBEDO) == 0) {
     ray.flags |= FLAG_ALBEDO;
     ray.albedo = normalize(light_color);
+  }
+  if ((ray.flags & FLAG_NORMAL) == 0) {
+    ray.flags |= FLAG_NORMAL;
     float3 intersection = ray.origin + ray.norm_ray * distance_from_origin;
     float3 distance_from_light_vector = intersection - light_pos;
     float3 normal = distance_from_light_vector / sysLightSize;
@@ -639,6 +668,11 @@ void ball_trace (
   float3 distance_from_ball_vector = ray.origin - ball.position_;
   float3 normal = distance_from_ball_vector * ball.inv_size_;
 
+  if ((ray.flags & FLAG_NORMAL) == 0) {
+    ray.flags |= FLAG_NORMAL;
+    ray.result_normal = normal;
+  }
+
   if (p.id_ != 0) {
     make_reflection(ray, ball.color_, ball.material_, normal);
     return;
@@ -649,11 +683,6 @@ void ball_trace (
   if (reflect_gen(ray.seed) < reflect_ammount) {
     make_reflection(ray, ball.color_, ball.material_, normal);
   } else {
-    if ((ray.flags & FLAG_ALBEDO) == 0) {
-      ray.flags |= FLAG_ALBEDO;
-      ray.albedo = ball.color_;
-      ray.result_normal = normal;
-    }
     make_refraction(ray, normal, ball.size_);
   }
 }
