@@ -39,6 +39,7 @@ class OpenglRenderer : public Renderer {
 
   GLuint quad_vao;
   GLuint quad_program;
+  GLuint quad_pp_program;
   GLuint tex_output;
 
   GLint post_processor_mul_;

@@ -124,6 +124,38 @@ void main () {
 }
 )";
 
+const char *frag_shader_pp_str =
+R"(#version 430
+in vec2 st;
+uniform sampler2D img;
+uniform float mul;
+out vec4 fc;
+
+void main () {
+  vec4 c = sqrt(texture (img, st) * mul);
+  // FIXME
+  if (c.x < 0) c.x = 0;
+  if (c.y < 0) c.y = 0;
+  if (c.z < 0) c.z = 0;
+  float m =  max(c.x, max(c.y, c.z));
+  if (m < 1) {
+    fc = c;
+    return;
+  }
+  float total = c.x + c.y + c.z;
+  if (total > 3) {
+    fc = vec4(1,1,1,1);
+    return;
+  }
+  float scale = (3 - total) / (3 * m - total);
+  float grey = 1 - scale * m;
+  fc = vec4(grey + scale * c.x,
+                grey + scale * c.y,
+                grey + scale * c.z, 1);
+}
+)";
+ 
+
 const char *frag_shader_str =
 R"(#version 430
 in vec2 st;
@@ -135,7 +167,7 @@ void main () {
 }
 )";
 
-GLuint create_quad_program() {
+GLuint create_quad_program(const char* frag_shader_str) {
   GLuint program = glCreateProgram();
   GLuint vert_shader = glCreateShader( GL_VERTEX_SHADER );
   glShaderSource( vert_shader, 1, &vert_shader_str, NULL );
@@ -390,7 +422,8 @@ bool OpenglRenderer::setup() {
   // set up shaders and geometry for full-screen quad
   // moved code to gl_utils.cpp
   quad_vao = create_quad_vao();
-  quad_program = create_quad_program();
+  quad_program = create_quad_program(frag_shader_str);
+  quad_pp_program = create_quad_program(frag_shader_pp_str);
 
   // texture handle and dimensions
   tex_output = 0;
@@ -408,8 +441,8 @@ bool OpenglRenderer::setup() {
         NULL );
   }
 
-  glUseProgram( quad_program );
-  post_processor_mul_ = glGetUniformLocation(quad_program, "mul");
+  glUseProgram( quad_pp_program );
+  post_processor_mul_ = glGetUniformLocation(quad_pp_program, "mul");
   frame_num = 0;
 
 
@@ -669,10 +702,14 @@ void OpenglRenderer::draw() {
   glMemoryBarrier( GL_SHADER_IMAGE_ACCESS_BARRIER_BIT );
 
 //  glClear( GL_COLOR_BUFFER_BIT );
-  glUseProgram( quad_program );
+  if (output_selector == 1) {
+    glUseProgram( quad_pp_program );
+    glUniform1f(post_processor_mul_, output_selector == 0 || output_selector == 4? 1 : brightness);
+  } else {
+    glUseProgram( quad_program );
+  }
   frame_num += max_rays;
 //  glUniform1f(post_processor_mul_, 1.f/frame_num * brightness);
-  glUniform1f(post_processor_mul_, output_selector == 0 || output_selector == 4? 1 : brightness);
   glBindVertexArray( quad_vao );
   glActiveTexture( GL_TEXTURE0 );
   glBindTexture( GL_TEXTURE_2D, tex_output );
