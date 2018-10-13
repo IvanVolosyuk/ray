@@ -329,6 +329,43 @@ RoomHit room_hit_internal(
 }
 
 RT_FUNCTION
+float3 ripple_normal(float3 intersection) {
+  float3 n{0.f,0.f,1.f};
+  float rippleMul = 1 / sysRippleScale;
+  for (int dx = -1; dx < 2; dx++) {
+    for (int dy = -1; dy < 2; dy++) {
+      int2 pos {int(floor(intersection.x * rippleMul)) + dx, int(floor(intersection.y * rippleMul)) + dy};
+      uint seed = tea<1>(pos.x, pos.y);
+      float duration = 0.9 + rand1(seed) * 0.1;
+      float start = floor(sysTime / duration) * duration;
+      seed = tea<1>(pos.x, pos.y + uint(start * 3));
+      float radius = sysTime - start;
+      float3 fpos = make_float3((make_float2(pos) + rand2(seed)) * sysRippleScale, 0);
+      float3 vec = intersection - fpos;
+      float dist = sqrt(dot(vec, vec));
+      float dist_from_radius = abs(dist - radius * sysRippleScale);
+      float intensity = max(0.f, 0.1f - 0.5 * dist_from_radius) * (0.9 - radius);
+
+      float3 dir = vec / dist;
+      n+= dir * (sin(dist_from_radius * 50 * rippleMul) * intensity);
+    }
+  }
+  n = normalize(n);
+  return n;
+}
+
+RT_FUNCTION
+RoomHit mirror_pool_hit(float3 intersection, float3 norm_ray, float min_dist) {
+  float3 n = ripple_normal(intersection);
+  float3 reflection = norm_ray - n * (dot(norm_ray, n) * 2);
+  float3 color = make_float3(1);
+  Material m;
+  m.diffuse_ammount_ = 0;
+  m.specular_exponent_ = 100000;
+  return RoomHit{min_dist, intersection, n, reflection, color, m};
+}
+
+RT_FUNCTION
 RoomHit room_hit(const float3 norm_ray, const float3 origin) {
   float3 tMin = (room.a_ - origin) / norm_ray;
   float3 tMax = (room.b_ - origin) / norm_ray;
@@ -407,33 +444,7 @@ RoomHit room_hit(const float3 norm_ray, const float3 origin) {
               floor_albedo, floor_normals, floor_roughness,
               u, v, min_dist, floor_specular_exponent, floor_diffuse_ammount);
         }
-        float3 n{0.f,0.f,1.f};
-        float rippleMul = 1 / sysRippleScale;
-        for (int dx = -1; dx < 2; dx++) {
-          for (int dy = -1; dy < 2; dy++) {
-            int2 pos {int(floor(intersection.x * rippleMul)) + dx, int(floor(intersection.y * rippleMul)) + dy};
-            uint seed = tea<1>(pos.x, pos.y);
-            float duration = 0.9 + rand1(seed) * 0.1;
-            float start = floor(sysTime / duration) * duration;
-            seed = tea<1>(pos.x, pos.y + uint(start * 3));
-            float radius = sysTime - start;
-            float3 fpos = make_float3((make_float2(pos) + rand2(seed)) * sysRippleScale, 0);
-            float3 vec = intersection - fpos;
-            float dist = sqrt(dot(vec, vec));
-            float dist_from_radius = abs(dist - radius * sysRippleScale);
-            float intensity = max(0.f, 0.1f - 0.5 * dist_from_radius) * (0.9 - radius);
-
-            float3 dir = vec / dist;
-            n+= dir * (sin(dist_from_radius * 50 * rippleMul) * intensity);
-          }
-        }
-        n = normalize(n);
-        float3 reflection = norm_ray - n * (dot(norm_ray, n) * 2);
-        float3 color = make_float3(1);
-        Material m;
-        m.diffuse_ammount_ = 0;
-        m.specular_exponent_ = 100000;
-        return RoomHit{min_dist, intersection, n, reflection, color, m};
+        return mirror_pool_hit(intersection, norm_ray, min_dist);
       }
     }
   }
