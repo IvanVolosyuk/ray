@@ -355,18 +355,111 @@ float3 ripple_normal(float3 intersection) {
 }
 
 RT_FUNCTION
-RoomHit mirror_pool_hit(float3 intersection, float3 norm_ray, float min_dist) {
-  float3 n = ripple_normal(intersection);
-  float3 reflection = norm_ray - n * (dot(norm_ray, n) * 2);
-  float3 color = make_float3(1);
+RoomHit mirror_pool_hit(uint& seed, float3 intersection, float3 norm_ray, float min_dist) {
   Material m;
   m.diffuse_ammount_ = 0;
   m.specular_exponent_ = 100000;
-  return RoomHit{min_dist, intersection, n, reflection, color, m};
+  float3 color = make_float3(1);
+
+  float3 normal = ripple_normal(intersection);
+  float3 reflection = norm_ray - normal * (dot(norm_ray, normal) * 2);
+  RoomHit reflect{min_dist, intersection, normal, reflection, color, m};
+  if (reflect_gen(seed) < fresnel(1.33f, normal, norm_ray)) {
+    return reflect;
+  }
+  norm_ray = refract(1.33f, normal, norm_ray);
+  float double_depth = 1.0f;//2.f;
+  float inner_dist = double_depth / -norm_ray.z;
+
+  min_dist += inner_dist;
+  norm_ray.z = -norm_ray.z;
+  intersection.x = intersection.x + inner_dist * norm_ray.x;
+  intersection.y = intersection.y + inner_dist * norm_ray.y;
+  float reflections = 1;
+
+  // TODO: merge handling of overflow and undeflow
+  float xoverflow = intersection.x - sysRippleHigh.x;
+  if (xoverflow > 0) {
+    float length = sysRippleHigh.x - sysRippleLow.x;
+    float length2 = length * 2;
+    float times = floor(xoverflow / length2);
+    reflections += times + 1;
+    xoverflow = xoverflow - times * length2; // Get rid of full round trips
+    if (xoverflow < length) {
+      intersection.x = sysRippleHigh.x - xoverflow;
+      norm_ray.x = -norm_ray.x;
+    } else {
+      intersection.x = sysRippleLow.x + (xoverflow - length);
+      reflections++;
+    }
+  } else {
+    float xunderflow = sysRippleLow.x - intersection.x;
+    if (xunderflow > 0) {
+      float length = sysRippleHigh.x - sysRippleLow.x;
+      float length2 = length * 2;
+      float times = floor(xunderflow / length2);
+      reflections += times + 1;
+      xunderflow = xunderflow - times * length2; // Get rid of full round trips
+      if (xunderflow < length) {
+        intersection.x = sysRippleLow.x + xunderflow;
+        norm_ray.x = -norm_ray.x;
+      } else {
+        intersection.x = sysRippleHigh.x - (xunderflow - length);
+        reflections++;
+      }
+    }
+  }
+
+  float yoverflow = intersection.y - sysRippleHigh.y;
+  if (yoverflow > 0) {
+    float length = sysRippleHigh.y - sysRippleLow.y;
+    float length2 = length * 2;
+    float times = floor(yoverflow / length2);
+    reflections += times + 1;
+    yoverflow = yoverflow - times * length2; // Get rid of full round trips
+    if (yoverflow < length) {
+      intersection.y = sysRippleHigh.y - yoverflow;
+      norm_ray.y = -norm_ray.y;
+    } else {
+      intersection.y = sysRippleLow.y + (yoverflow - length);
+      reflections++;
+    }
+  } else {
+    float yunderflow = sysRippleLow.y - intersection.y;
+    if (yunderflow > 0) {
+      float length = sysRippleHigh.y - sysRippleLow.y;
+      float length2 = length * 2;
+      float times = floor(yunderflow / length2);
+      reflections += times + 1;
+      yunderflow = yunderflow - times * length2; // Get rid of full round trips
+      if (yunderflow < length) {
+        intersection.y = sysRippleLow.y + yunderflow;
+        norm_ray.y = -norm_ray.y;
+      } else {
+        intersection.y = sysRippleHigh.y - (yunderflow - length);
+        reflections++;
+      }
+    }
+  }
+  float out_fraction = 1-fresnel(1.33f, normal, norm_ray);
+  float3 filter = make_float3(0.7f, 0.7f, 0.95f);
+  if (out_fraction != 0) {
+    normal = ripple_normal(intersection);
+    norm_ray = refract(1.33f, normal, norm_ray);
+//    color *= out_fraction;
+    color *= make_float3(
+        powf(filter.x, reflections),
+        powf(filter.y, reflections),
+        powf(filter.z, reflections));
+  } else {
+    return reflect;
+  }
+
+  return RoomHit{min_dist, intersection, normal, norm_ray, color, m};
 }
 
 RT_FUNCTION
-RoomHit room_hit(const float3 norm_ray, const float3 origin) {
+RoomHit room_hit(uint& seed, const float3 norm_ray, const float3 origin) {
   float3 tMin = (room.a_ - origin) / norm_ray;
   float3 tMax = (room.b_ - origin) / norm_ray;
 //  float3 t1 = min(tMin, tMax);
@@ -444,7 +537,31 @@ RoomHit room_hit(const float3 norm_ray, const float3 origin) {
               floor_albedo, floor_normals, floor_roughness,
               u, v, min_dist, floor_specular_exponent, floor_diffuse_ammount);
         }
-        return mirror_pool_hit(intersection, norm_ray, min_dist);
+        U = float3{1, 0, 0};
+        V = float3{0, 1, 0};
+        float u = intersection.x * 0.2f;
+        float v = intersection.y * 0.2f;
+        RoomHit floor_hit = room_hit_internal(
+            intersection,
+            norm_ray,
+            normal,
+            U, V,
+            floor_albedo, floor_normals, floor_roughness,
+            u, v, min_dist, floor_specular_exponent, floor_diffuse_ammount);
+
+        float3 normal = ripple_normal(intersection);
+        if (reflect_gen(seed) < fresnel(1.33f, normal, norm_ray)) {
+          Material m;
+          m.diffuse_ammount_ = 0;
+          m.specular_exponent_ = 100000;
+          float3 color = floor_hit.color;
+          float3 reflection = norm_ray - normal * (dot(norm_ray, normal) * 2);
+          RoomHit reflect{min_dist, intersection, normal, reflection, color, m};
+          return reflect;
+        } else {
+          return floor_hit;
+        }
+//        return mirror_pool_hit(seed, intersection, norm_ray, min_dist);
       }
     }
   }
@@ -566,13 +683,13 @@ void compute_light(
 
   float r = reflect_gen(ray.seed);
   bool is_diffuse = r < m.diffuse_ammount_;
-    ray.norm_ray = is_diffuse ? scatter(ray.seed, normal, 1) : scatter(ray.seed, ray.norm_ray, m.specular_exponent_);
-    float angle = dot(ray.norm_ray, normal);
-    if (angle <= 0) {
-      ray.flags |= FLAG_TERMINATE;
-      return;
-    }
-    ray.color_filter = ray.color_filter * angle * (is_diffuse ? color : specular_color);
+  ray.norm_ray = is_diffuse ? scatter(ray.seed, normal, 1) : scatter(ray.seed, ray.norm_ray, m.specular_exponent_);
+  float angle = dot(ray.norm_ray, normal);
+  if (angle <= 0) {
+    ray.flags |= FLAG_TERMINATE;
+    return;
+  }
+  ray.color_filter = ray.color_filter * angle * (is_diffuse ? color : specular_color);
 }
 
 RT_FUNCTION
@@ -601,10 +718,18 @@ void light_trace_new(
 RT_FUNCTION
 void room_trace(
     REF(RayData) ray) {
-  RoomHit p = room_hit(ray.norm_ray, ray.origin);
+  RoomHit p = room_hit(ray.seed, ray.norm_ray, ray.origin);
   ray.origin = p.intersection;
   ray.norm_ray = p.reflection;
   ray.distance_from_eye += p.min_dist;
+  // Hack hack
+  if (p.material.specular_exponent_ == 100000) {
+    if ((ray.flags & FLAG_ALBEDO) == 0) {
+      ray.flags |= FLAG_ALBEDO;
+      ray.albedo = p.color;
+      p.color = make_float3(1);
+    }
+  }
 
   compute_light(
       ray,
