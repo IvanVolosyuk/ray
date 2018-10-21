@@ -689,7 +689,7 @@ void compute_light(
     ray.flags |= FLAG_TERMINATE;
     return;
   }
-  ray.color_filter = ray.color_filter * angle * (is_diffuse ? color : specular_color);
+  ray.color_filter = ray.color_filter * (is_diffuse ? color * angle : specular_color);
 }
 
 RT_FUNCTION
