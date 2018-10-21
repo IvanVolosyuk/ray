@@ -629,7 +629,6 @@ void OpenglRenderer::draw() {
     ctx_["sysRippleScale"]->setFloat(ripple_scale);
     ctx_["sysRippleLow"]->set2fv(ripple_low);
     ctx_["sysRippleHigh"]->set2fv(ripple_high);
-    ctx_["sysFocusedDistance"]->setFloat(focused_distance);
     ctx_["sysLightSize"]->setFloat(light_size);
     ctx_["sysLightSize2"]->setFloat(light_size2);
     ctx_["sysMaxDepth"]->setUint(max_depth);
@@ -668,6 +667,8 @@ void OpenglRenderer::draw() {
   if (frame_num == 0 && !freeze_waves) {
     ctx_["sysTime"]->setFloat((SDL_GetTicks()  | (1 << 25))/ 1000.f);
   }
+
+  ctx_["sysFocusedDistance"]->setFloat(focused_distance);
   ctx_["sysFrameNum"]->setUint(frame_num);
   ctx_["sysMaxRays"]->setUint(max_rays);
   ctx_["sysSight"]->set3fv((float*)&sight);
