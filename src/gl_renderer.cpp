@@ -539,7 +539,7 @@ bool no_accumulate = false;
 float ripple_scale = 1;
 float ripple_low[2] = {-5, -2};
 float ripple_high[2] = { 2, 2};
-
+float antialising = 1;
 
 void OpenglRenderer::draw() {
   ImGui_ImplOpenGL3_NewFrame();
@@ -572,13 +572,14 @@ void OpenglRenderer::draw() {
     ImGui::SliderInt("Output", &output_selector, 0, 4);
 
     a |= ImGui::Checkbox("No light rays", &no_light_rays);
+    a |= ImGui::DragFloat("Antialising", &antialising, 0.1, 0, 3);
     a |= ImGui::DragFloat("Ripple Scale", &ripple_scale, 0.1, 0.1, 2.f, "%0.2f");
     a |= ImGui::DragFloat2("Ripple Low", ripple_low, 0.1, -10., 10.1f, "%0.1f");
     a |= ImGui::DragFloat2("Ripple High", ripple_high, 0.1, -10., 10.1f, "%0.1f");
-    a |= ImGui::DragFloat("Lense Size", &lense_blur, 0.0001, 0.0001f, 0.1f, "%0.4f");
+    a |= ImGui::DragFloat("Lense Size", &lense_blur, 0.0001, 0.0f, 0.1f, "%0.4f");
     a |= ImGui::DragFloat("Focus Distance", &focused_distance, 0.05, 0.01f, 10.0f);
-    a |= ImGui::DragFloat("Light Size", &light_size, 0.01, 0.01f, 4.0f);
-    a |= ImGui::SliderInt("Max Depth", &max_depth, 1, 20);
+    a |= ImGui::DragFloat("Light Size", &light_size, 0.01, 0.00f, 4.0f);
+    a |= ImGui::SliderInt("Max Depth", &max_depth, 0, 20);
     a |= ImGui::ColorEdit3("Absorption Color", (float*)&absorption_color, 0);
     a |= ImGui::DragFloat("Absorption Intensitiy", &absorption_intensity, 0.05, 0.05, 10);
     a |= ImGui::DragFloat("Refraction Index", &glass_refraction_index, 0.01, 0.9, 5);
@@ -637,6 +638,7 @@ void OpenglRenderer::draw() {
     ctx_["room"]->setUserData(sizeof(room), &room);
     ctx_["sysMaxInternalReflections"]->setUint(max_internal_reflections);
     ctx_["sysTracerFlags"]->setUint(no_light_rays ? 2 : 0); 
+    ctx_["sysAntialising"]->setFloat(antialising);
 
     for (size_t i = 0; i < LENGTH(balls); i++) {
       balls[i].size2_ = balls[i].size_ * balls[i].size_;

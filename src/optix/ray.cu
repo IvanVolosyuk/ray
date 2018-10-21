@@ -47,6 +47,7 @@ rtDeclareVariable(float3, sysAbsorption, , make_float3(0.17,0.17,0.53));
 rtDeclareVariable(uint,   sysTracerFlags, , );
 rtDeclareVariable(float, sysTime, , );
 rtDeclareVariable(float, sysRippleScale, , );
+rtDeclareVariable(float, sysAntialising, , );
 rtDeclareVariable(float2, sysRippleLow, , );
 rtDeclareVariable(float2, sysRippleHigh, , );
 
@@ -638,9 +639,7 @@ void compute_light(
     const Material m,
     const float3 normal) {
   if ((ray.flags & FLAG_ALBEDO) == 0) {
-    if (m.specular_exponent_ < 100000) {
-      ray.flags |= FLAG_ALBEDO;
-    }
+    ray.flags |= FLAG_ALBEDO;
     ray.albedo = color;
   }
   if ((ray.flags & FLAG_NORMAL) == 0) {
@@ -706,6 +705,7 @@ void light_trace_new(
     ray.flags |= FLAG_ALBEDO;
     ray.albedo = normalize(light_color);
   }
+
   if ((ray.flags & FLAG_NORMAL) == 0) {
     ray.flags |= FLAG_NORMAL;
     float3 intersection = ray.origin + ray.norm_ray * distance_from_origin;
@@ -722,14 +722,6 @@ void room_trace(
   ray.origin = p.intersection;
   ray.norm_ray = p.reflection;
   ray.distance_from_eye += p.min_dist;
-  // Hack hack
-  if (p.material.specular_exponent_ == 100000) {
-    if ((ray.flags & FLAG_ALBEDO) == 0) {
-      ray.flags |= FLAG_ALBEDO;
-      ray.albedo = p.color;
-      p.color = make_float3(1);
-    }
-  }
 
   compute_light(
       ray,
@@ -814,6 +806,11 @@ void ball_trace (
     return;
   }
 
+  if ((ray.flags & FLAG_ALBEDO) == 0) {
+    ray.flags |= FLAG_ALBEDO;
+    ray.albedo = ball.color_;
+  }
+
   float reflect_ammount = fresnel(sysRefractionIndex, normal, ray.norm_ray);
 
   if (reflect_gen(ray.seed) < reflect_ammount) {
@@ -846,6 +843,13 @@ void trace (RayData& ray) {
       ball_trace(ray, hit);
     }
     if ((ray.flags & FLAG_TERMINATE) != 0) return;
+    if ((ray.flags & (FLAG_ALBEDO|FLAG_NORMAL)) == (FLAG_ALBEDO|FLAG_NORMAL))  {
+      float cutoff = fmaxf(ray.color_filter);
+      if (rand1(ray.seed) >= cutoff) {
+        return;
+      }
+      ray.color_filter /= cutoff;
+    }
     depth++;
   }
 }
@@ -863,8 +867,8 @@ RT_PROGRAM void ray() {
 
   float3 xoffset = sysSightX * fov;
   float3 yoffset = -sysSightY * (fov * dims.y / dims.x);
-  float3 dx = xoffset * (2.f/dims.x);
-  float3 dy = yoffset * (2.f/dims.y);
+  float3 dx = xoffset * (2.f/dims.x) * sysAntialising;
+  float3 dy = yoffset * (2.f/dims.y) * sysAntialising;
 
   float3 ray = sysSight + xoffset * x + yoffset * y ;
   float3 origin = sysViewer;
