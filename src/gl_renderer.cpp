@@ -6,6 +6,7 @@
 // 26 Feb 2016
 
 
+#include <unistd.h>
 #include <iostream>
 #include <string>
 #include <sstream>
@@ -534,14 +535,17 @@ vec3 clear_color;
 vec3 absorption_color = vec3(0.17, 0.17, 0.53);
 float absorption_intensity = 1.0f;
 bool no_light_rays = false;
-int output_selector = 3;
+int output_selector = 1;
 bool no_accumulate = false;
 float ripple_scale = 1;
 float ripple_low[2] = {-5, -2};
-float ripple_high[2] = { 2, 2};
+float ripple_high[2] = { -10, 2};
 float antialising = 1;
 
 void OpenglRenderer::draw() {
+  // Safety alarm to avoid hang up.
+  alarm(5);
+
   ImGui_ImplOpenGL3_NewFrame();
   ImGui_ImplSDL2_NewFrame(window_);
   ImGui::NewFrame();
@@ -579,7 +583,7 @@ void OpenglRenderer::draw() {
     a |= ImGui::DragFloat("Lense Size", &lense_blur, 0.0001, 0.0f, 0.1f, "%0.4f");
     a |= ImGui::DragFloat("Focus Distance", &focused_distance, 0.05, 0.01f, 10.0f);
     a |= ImGui::DragFloat("Light Size", &light_size, 0.01, 0.00f, 4.0f);
-    a |= ImGui::SliderInt("Max Depth", &max_depth, 0, 20);
+    a |= ImGui::SliderInt("Max Depth", &max_depth, 0, 200);
     a |= ImGui::ColorEdit3("Absorption Color", (float*)&absorption_color, 0);
     a |= ImGui::DragFloat("Absorption Intensitiy", &absorption_intensity, 0.05, 0.05, 10);
     a |= ImGui::DragFloat("Refraction Index", &glass_refraction_index, 0.01, 0.9, 5);

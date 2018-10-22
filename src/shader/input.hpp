@@ -16,7 +16,7 @@ INPUT(float, light_size2, 0.8f) // light_size * light_size
 INPUT(int, frame_num, 0) // 1.f / light_size
 //INPUT(float, diffuse_attenuation, 0.4)
 INPUT(int, max_depth, 2)
-INPUT(float, lense_blur, 0.01)
+INPUT(float, lense_blur, 0.0)
 INPUT(int, max_rays, 1)
 INPUT(float, glass_refraction_index, 1.492)
 INPUT(int, max_internal_reflections, 2)

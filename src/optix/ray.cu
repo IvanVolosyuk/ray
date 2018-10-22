@@ -54,9 +54,9 @@ rtDeclareVariable(float2, sysRippleHigh, , );
 //rtDeclareVariable(optix::Ray, theRay, rtCurrentRay, );
 
 
-struct PerRayData {
-};
-
+//struct PerRayData {
+//};
+//
 //rtDeclareVariable(PerRayData, thePrd, rtPayload, );
 
 ///  struct_input.h ////
@@ -551,11 +551,11 @@ RoomHit room_hit(uint& seed, const float3 norm_ray, const float3 origin) {
             u, v, min_dist, floor_specular_exponent, floor_diffuse_ammount);
 
         float3 normal = ripple_normal(intersection);
-        if (reflect_gen(seed) < fresnel(1.33f, normal, norm_ray)) {
+        if (true || reflect_gen(seed) < fresnel(1.33f, normal, norm_ray)) {
           Material m;
           m.diffuse_ammount_ = 0;
           m.specular_exponent_ = 100000;
-          float3 color = floor_hit.color;
+          float3 color = make_float3(1);
           float3 reflection = norm_ray - normal * (dot(norm_ray, normal) * 2);
           RoomHit reflect{min_dist, intersection, normal, reflection, color, m};
           return reflect;
@@ -626,10 +626,31 @@ struct RayData {
   float3 norm_ray;
   // FIXME:add norm_ray_inv as well
   float3 color_filter;
-  float distance_from_eye;
+  float light_multiplier;
   int flags;
   uint seed;
 };
+
+RT_FUNCTION
+float light_solid_angle_div_hemisphere(float3 origin) {
+  float3 vector_to_center = origin - light_pos;
+  float distance_to_center2 = dot(vector_to_center, vector_to_center);
+  float a = (distance_to_center2 - sysLightSize2) / distance_to_center2;
+  if (a < 0) a = 0;
+  float solid_angle_div_hemisphere = 1 - sqrt(a);
+  return solid_angle_div_hemisphere;
+}
+
+RT_FUNCTION
+float3 uniform_hemisphere(uint& seed, float3 normal) {
+  float u1=rand1(seed);
+  float u2=rand1(seed);
+  float3 p;
+  cosine_sample_hemisphere(u1, u2, p);
+  optix::Onb onb( normal );
+  onb.inverse_transform( p );
+  return p;
+}
 
 RT_FUNCTION
 void compute_light(
@@ -638,6 +659,10 @@ void compute_light(
     const float3 specular_color,
     const Material m,
     const float3 normal) {
+  // FIXME:
+//  Material m;
+//  m.specular_exponent_ = 100;
+//  m.diffuse_ammount_ = 1;
   if ((ray.flags & FLAG_ALBEDO) == 0) {
     ray.flags |= FLAG_ALBEDO;
     ray.albedo = color;
@@ -647,6 +672,7 @@ void compute_light(
     ray.result_normal = normal;
   }
   if ((ray.flags & FLAG_NO_SECONDARY) == 0) {
+    ray.light_multiplier = 1 - m.diffuse_ammount_;
     float3 light_rnd_pos = light_pos + light_distr(ray.seed);
 
     float3 light_from_point = light_rnd_pos - ray.origin;
@@ -662,19 +688,9 @@ void compute_light(
 
       if (hit.closest_point_distance_from_viewer_ > light_distance) {
         float angle = angle_x_distance * light_distance_inv;
-        float a = dot(ray.norm_ray, light_from_point_norm);
-        float specular = 0;
-        if (a > 0) {
-          // Clamp
-          a = min(a, 1.f);
-          specular = powf(a, m.specular_exponent_);
-        }
-        float total_distance = light_distance + ray.distance_from_eye;
 
-        // FIXME: should angle be only used for diffuse color?
-        float3 reflected_light = (color * light_color) * m.diffuse_ammount_
-          + (specular_color * light_color) * (1-m.diffuse_ammount_) * specular;
-        ray.intensity += reflected_light * ray.color_filter * (angle / (total_distance * total_distance + 1e-12f));
+        float3 reflected_light = (color * light_color) * m.diffuse_ammount_;
+        ray.intensity += reflected_light * ray.color_filter * (angle / (light_distance2 + 1e-12f));
       }
     }
   }
@@ -682,7 +698,8 @@ void compute_light(
 
   float r = reflect_gen(ray.seed);
   bool is_diffuse = r < m.diffuse_ammount_;
-  ray.norm_ray = is_diffuse ? scatter(ray.seed, normal, 1) : scatter(ray.seed, ray.norm_ray, m.specular_exponent_);
+  ray.norm_ray = is_diffuse ? uniform_hemisphere(ray.seed, normal)
+    : scatter(ray.seed, ray.norm_ray, m.specular_exponent_);
   float angle = dot(ray.norm_ray, normal);
   if (angle <= 0) {
     ray.flags |= FLAG_TERMINATE;
@@ -698,9 +715,10 @@ void light_trace_new(
   float distance_from_origin = p.closest_point_distance_from_viewer_ -
     sqrt(sysLightSize2 - p.distance_from_object_center2_);
 
-  float total_distance = ray.distance_from_eye + distance_from_origin;
+  ray.flags |= FLAG_TERMINATE;
 
-  ray.intensity += light_color * ray.color_filter * (1.f / (total_distance * total_distance + 1e-12f));
+  ray.intensity += light_color * ray.color_filter * ray.light_multiplier;
+
   if ((ray.flags & FLAG_ALBEDO) == 0) {
     ray.flags |= FLAG_ALBEDO;
     ray.albedo = normalize(light_color);
@@ -721,7 +739,6 @@ void room_trace(
   RoomHit p = room_hit(ray.seed, ray.norm_ray, ray.origin);
   ray.origin = p.intersection;
   ray.norm_ray = p.reflection;
-  ray.distance_from_eye += p.min_dist;
 
   compute_light(
       ray,
@@ -733,7 +750,7 @@ void room_trace(
 
 RT_FUNCTION
 void trace_ball0_internal(REF(RayData) ray, float size) {
-  float start_distance = ray.distance_from_eye;
+  float travel_distance = 0;
   for (int i = 0; i < sysMaxInternalReflections; i++) {
     float3 ball_vector = balls.ball[0].position_ - ray.origin;
     float closest_point_distance_from_viewer = dot(ray.norm_ray, ball_vector);
@@ -742,7 +759,7 @@ void trace_ball0_internal(REF(RayData) ray, float size) {
     float3 distance_from_ball_vector = intersection - balls.ball[0].position_;
     float3 normal = normalize(distance_from_ball_vector);
     ray.origin = balls.ball[0].position_ + normal * size;
-    ray.distance_from_eye += distance_from_origin;
+    travel_distance += distance_from_origin;
 
     if (reflect_gen(ray.seed) < fresnel(sysRefractionIndex, normal, ray.norm_ray)) {
       float3 ray_reflection = ray.norm_ray - normal * (2 * dot(ray.norm_ray, normal));
@@ -751,7 +768,7 @@ void trace_ball0_internal(REF(RayData) ray, float size) {
       continue;
     } else {
       ray.norm_ray = refract(sysRefractionIndex, normal, ray.norm_ray);
-      float td = ray.distance_from_eye - start_distance; // travel distance
+      float td = travel_distance;
       float3 extinction = make_float3(
           expf(-sysAbsorption.x * td),
           expf(-sysAbsorption.y * td),
@@ -791,7 +808,6 @@ void ball_trace (
     sqrt(ball.size2_ - p.distance_from_object_center2_);
 
   ray.origin = ray.origin + ray.norm_ray * distance_from_origin;
-  ray.distance_from_eye += distance_from_origin;
 
   float3 distance_from_ball_vector = ray.origin - ball.position_;
   float3 normal = distance_from_ball_vector * ball.inv_size_;
@@ -836,6 +852,7 @@ void trace (RayData& ray) {
     }
 
     if (depth == sysMaxDepth - 1) ray.flags |= FLAG_TERMINATE;
+    ray.light_multiplier = 1;
 
     if (hit.id_ < 0) {
       room_trace(ray);
@@ -843,6 +860,7 @@ void trace (RayData& ray) {
       ball_trace(ray, hit);
     }
     if ((ray.flags & FLAG_TERMINATE) != 0) return;
+
     if ((ray.flags & (FLAG_ALBEDO|FLAG_NORMAL)) == (FLAG_ALBEDO|FLAG_NORMAL))  {
       float cutoff = fmaxf(ray.color_filter);
       if (rand1(ray.seed) >= cutoff) {
@@ -893,11 +911,11 @@ RT_PROGRAM void ray() {
       RayData ray;
       ray.origin = me;
       ray.norm_ray = new_ray;
-      ray.distance_from_eye = 0;
       ray.color_filter = float3{1,1,1};
       ray.intensity = float3{0,0,0};
       ray.flags = sysTracerFlags;
       ray.seed = seed;
+      ray.light_multiplier = 1;
 
       trace(ray);
       if (ray.intensity.x < 0 || ray.intensity.y < 0 || ray.intensity.z < 0
