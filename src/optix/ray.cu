@@ -670,7 +670,7 @@ void compute_light(
   }
 
   if ((ray.flags & FLAG_NO_SECONDARY) == 0) {
-    ray.light_multiplier = 1 - m.diffuse_ammount_;
+    ray.light_multiplier *= 1 - m.diffuse_ammount_;
     float3 light_rnd_pos = light_pos + light_distr(ray.seed);
 
     float3 light_from_point = light_rnd_pos - ray.origin;
@@ -726,7 +726,7 @@ void light_trace_new(
 
   ray.flags |= FLAG_TERMINATE;
 
-//  ray.intensity += light_color * ray.color_filter * ray.light_multiplier * 0.01;
+  ray.intensity += light_color * ray.color_filter * ray.light_multiplier;
 
   if ((ray.flags & FLAG_ALBEDO) == 0) {
     ray.flags |= FLAG_ALBEDO;
@@ -864,7 +864,6 @@ void trace (RayData& ray) {
     }
 
     if (depth == sysMaxDepth - 1) ray.flags |= FLAG_TERMINATE;
-    ray.light_multiplier = 1;
 
     if (hit.id_ < 0) {
       room_trace(ray);
