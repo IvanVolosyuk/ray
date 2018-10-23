@@ -93,7 +93,7 @@ rtDeclareVariable(Box, room, ,);
 __device__
 const float fov = 0.7;
 __device__
-const float light_power = 200.4f;
+const float light_power = 50.4f;
 __device__
 const float3 light_pos {5.0, -8, 3.0};
 __device__
@@ -655,14 +655,11 @@ float3 uniform_hemisphere(uint& seed, float3 normal) {
 RT_FUNCTION
 void compute_light(
     REF(RayData) ray,
+    float cos_a,
     const float3 color,
     const float3 specular_color,
     const Material m,
     const float3 normal) {
-  // FIXME:
-//  Material m;
-//  m.specular_exponent_ = 100;
-//  m.diffuse_ammount_ = 1;
   if ((ray.flags & FLAG_ALBEDO) == 0) {
     ray.flags |= FLAG_ALBEDO;
     ray.albedo = color;
@@ -671,6 +668,7 @@ void compute_light(
     ray.flags |= FLAG_NORMAL;
     ray.result_normal = normal;
   }
+
   if ((ray.flags & FLAG_NO_SECONDARY) == 0) {
     ray.light_multiplier = 1 - m.diffuse_ammount_;
     float3 light_rnd_pos = light_pos + light_distr(ray.seed);
@@ -689,8 +687,9 @@ void compute_light(
       if (hit.closest_point_distance_from_viewer_ > light_distance) {
         float angle = angle_x_distance * light_distance_inv;
 
-        float3 reflected_light = (color * light_color) * m.diffuse_ammount_;
-        ray.intensity += reflected_light * ray.color_filter * (angle / (light_distance2 + 1e-12f));
+        float3 reflected_light = (color * light_color) * m.diffuse_ammount_ * sysLightSize2;
+        float diffuse_attenuation = cos_a / M_PI;
+        ray.intensity += reflected_light * ray.color_filter * (diffuse_attenuation * angle / (M_PI* (light_distance2 + 1e-12f)));
       }
     }
   }
@@ -698,14 +697,24 @@ void compute_light(
 
   float r = reflect_gen(ray.seed);
   bool is_diffuse = r < m.diffuse_ammount_;
-  ray.norm_ray = is_diffuse ? uniform_hemisphere(ray.seed, normal)
-    : scatter(ray.seed, ray.norm_ray, m.specular_exponent_);
-  float angle = dot(ray.norm_ray, normal);
-  if (angle <= 0) {
-    ray.flags |= FLAG_TERMINATE;
-    return;
+  if (is_diffuse) {
+    ray.norm_ray = uniform_hemisphere(ray.seed, normal);
+    float angle = dot(ray.norm_ray, normal);
+    if (angle <= 0) {
+      ray.flags |= FLAG_TERMINATE;
+      return;
+    }
+    ray.color_filter = ray.color_filter * (color * angle / M_PI);
+  } else {
+    // specular, alter reflected ray
+    ray.norm_ray = scatter(ray.seed, ray.norm_ray, m.specular_exponent_);
+    float angle = dot(ray.norm_ray, normal);
+    if (angle <= 0) {
+      ray.flags |= FLAG_TERMINATE;
+      return;
+    }
+    ray.color_filter = ray.color_filter * specular_color;
   }
-  ray.color_filter = ray.color_filter * (is_diffuse ? color * angle : specular_color);
 }
 
 RT_FUNCTION
@@ -717,7 +726,7 @@ void light_trace_new(
 
   ray.flags |= FLAG_TERMINATE;
 
-  ray.intensity += light_color * ray.color_filter * ray.light_multiplier;
+//  ray.intensity += light_color * ray.color_filter * ray.light_multiplier * 0.01;
 
   if ((ray.flags & FLAG_ALBEDO) == 0) {
     ray.flags |= FLAG_ALBEDO;
@@ -738,10 +747,12 @@ void room_trace(
     REF(RayData) ray) {
   RoomHit p = room_hit(ray.seed, ray.norm_ray, ray.origin);
   ray.origin = p.intersection;
+  float cos_a = -dot(ray.norm_ray, p.normal);
   ray.norm_ray = p.reflection;
 
   compute_light(
       ray,
+      cos_a,
       p.color,
       p.color,
       p.material,
@@ -795,8 +806,9 @@ void make_reflection(
     const float3 color,
     const Material m,
     const float3 normal) {
+  float cos_a = -dot(ray.norm_ray, normal);
   ray.norm_ray = ray.norm_ray - normal * (2 * dot(ray.norm_ray, normal));
-  compute_light(ray, color, color, m, normal);
+  compute_light(ray, cos_a, color, color, m, normal);
 }
 
 RT_FUNCTION
