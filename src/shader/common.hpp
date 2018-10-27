@@ -10,6 +10,7 @@
 
 #include "struct_input.hpp"
 
+float kEpsilon = 1e-10;
 float fov = 0.7;
 int x_batch = 1;
 

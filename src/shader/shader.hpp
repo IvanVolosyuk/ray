@@ -1,4 +1,5 @@
 #include "common.hpp"
+#include "kd.hpp"
 
 //float OBJECT_REFLECTIVITY = 0;
 
@@ -52,8 +53,17 @@ Hit ball_hit(in int id, in vec3 norm_ray, in vec3 origin) {
   }
   return Hit(id, closest_point_distance_from_viewer, distance_from_object_center2);
 }
-
-Hit bbox_hit(in vec3 norm_ray, in vec3 origin) {
+Hit2 bbox_hit(in vec3 norm_ray, in vec3 origin) {
+  Ray r = Ray::make(origin, norm_ray);
+  auto res = r.intersect(kdtree.bbox);
+//  printf("Trace ray %f %f\n", res.first, res.second);
+  float tmin = std::max(0.f, res.first);
+  float tmax = res.second;
+  if (tmin > tmax) {
+    return {-1, max_distance};
+  }
+  return r.traverse_nonrecursive(0, tmin, tmax);
+#if 0
   vec3 tMin = (bbox.a_ - origin) / norm_ray;
   vec3 tMax = (bbox.b_ - origin) / norm_ray;
   vec3 t1 = min(tMin, tMax);
@@ -71,6 +81,7 @@ Hit bbox_hit(in vec3 norm_ray, in vec3 origin) {
     }
   }
   return hit;
+#endif
 }
 
 RoomHit room_hit_internal(
@@ -269,9 +280,9 @@ void compute_light(
     float light_distance = 1.f/light_distance_inv;
     vec3 light_from_point_norm = light_from_point * light_distance_inv;
 
-    Hit hit = bbox_hit(light_from_point_norm, ray.origin);
+    Hit2 hit = bbox_hit(light_from_point_norm, ray.origin);
 
-    if (hit.closest_point_distance_from_viewer_ > light_distance) {
+    if (hit.id == -1 || hit.distance > light_distance) {
       float angle = angle_x_distance * light_distance_inv;
       float a = dot(ray.norm_ray, light_from_point_norm);
       float specular = 0;
@@ -380,6 +391,18 @@ void make_reflection(
   compute_light(ray, color, color, m, normal);
 }
 
+void triangle_trace (
+    REF(RayData) ray,
+    in Hit2 p) {
+  vec3 normal = tris[p.id].normal;
+  ray.origin = ray.origin + ray.norm_ray * p.distance;
+  ray.distance_from_eye += p.distance;
+  ray.norm_ray = ray.norm_ray - normal * (2 * dot(ray.norm_ray, normal));
+  
+  Material m {0.01, 100000};
+  compute_light(ray, vec3(1), vec3(1), m, normal);
+}
+
 void ball_trace (
     REF(RayData) ray,
     in Hit p) {
@@ -412,20 +435,20 @@ vec3 trace (RayData ray) {
 
   int depth = 0;
   while (true) {
-    Hit hit = bbox_hit(ray.norm_ray, ray.origin);
+    Hit2 hit = bbox_hit(ray.norm_ray, ray.origin);
 
     Hit light = light_hit(ray.norm_ray, ray.origin);
     if (light.closest_point_distance_from_viewer_ <
-        hit.closest_point_distance_from_viewer_) {
+        hit.distance) {
       return light_trace_new(light, ray);
     }
 
     if (depth == max_depth - 1) ray.flags |= FLAG_TERMINATE;
 
-    if (hit.id_ < 0) {
+    if (hit.id < 0) {
       room_trace(ray);
     } else {
-      ball_trace(ray, hit);
+      triangle_trace(ray, hit);
     }
     if ((ray.flags & FLAG_TERMINATE) != 0) return ray.intensity;
     depth++;

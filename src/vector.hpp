@@ -36,6 +36,12 @@ class BasePoint {
     inline bool operator != (const BasePoint& v) const;
     inline T size() const;
     inline T size2() const;
+    inline constexpr T operator[] (int idx) const {
+      return idx == 0 ? x : ((idx == 1) ? y : z);
+    }
+    inline constexpr T& operator[] (int idx) {
+      return idx == 0 ? x : ((idx == 1) ? y : z);
+    }
     inline float sum() const;
 
     template<class Y>

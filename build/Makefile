@@ -31,7 +31,7 @@ vector.o: vector.hpp
 
 gl_renderer.o: gl_renderer.hpp vector.hpp renderer.hpp input.hpp
 
-sw_renderer.o: sw_renderer.hpp renderer.hpp common.hpp shader.hpp software.hpp input.hpp texture.hpp
+sw_renderer.o: sw_renderer.hpp renderer.hpp common.hpp shader.hpp software.hpp input.hpp texture.hpp kd.hpp
 
 png.o: png.hpp
 
