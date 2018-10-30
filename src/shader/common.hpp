@@ -15,7 +15,7 @@ float fov = 0.7;
 int x_batch = 1;
 
 float light_power = 5500.4f;
-vec3 light_pos = vec3(0.0, 0, 0.5);
+vec3 light_pos = vec3(5, -8, 3);
 vec3 light_color = vec3(light_power, light_power, light_power);
 
 struct Hit {

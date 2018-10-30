@@ -210,32 +210,12 @@ Hit light_hit(in vec3 norm_ray, in vec3 origin) {
   return Hit(-2, closest_point_distance_from_origin, distance_from_light_center2);
 }
 
-vec3 light_trace(
-    in Hit p,
-    vec3 norm_ray,
-    vec3 origin,
-    float distance_from_eye) {
-  float distance_from_origin = p.closest_point_distance_from_viewer_ -
-    sqrt(light_size2 - p.distance_from_object_center2_);
-
-//  vec3 intersection = origin + norm_ray * distance_from_origin;
-//  vec3 distance_from_light_vector = intersection - light_pos;
-
-//  vec3 normal = distance_from_light_vector * light_inv_size;
-//  float angle = -dot(norm_ray, normal);
-  float total_distance = distance_from_eye + distance_from_origin;
-
-  vec3 res = light_color * (1.f / (total_distance * total_distance + 1e-12f));
-  assert(isfinite(res.size2()));
-  return res;
-}
-
 vec3 scatter(in vec3 v, float specular_exponent) {
   // https://en.wikipedia.org/wiki/Specular_highlight#Phong_distribution
   float N = specular_exponent;
   float r = reflect_gen(SW(gen));
   // https://programming.guide/random-point-within-circle.html
-  float cos_b = specular_exponent != 0 ? pow(r, 1/(N+1)) : r * 2 - 1;
+  float cos_b = pow(r, 1/(N+1));
   float sin_b = sqrt(1 - cos_b * cos_b);
   // https://scicomp.stackexchange.com/questions/27965/rotate-a-vector-by-a-randomly-oriented-angle
   float a = reflect_gen(SW(gen)) * 2 * M_PI;
@@ -263,16 +243,18 @@ struct RayData {
   vec3 norm_ray;
   // FIXME:add norm_ray_inv as well
   vec3 color_filter;
-  float distance_from_eye;
+  float light_multiplier;
   int flags;
 };
 
 void compute_light(
     REF(RayData) ray,
+    in float cos_a,
     in vec3 color,
     in vec3 specular_color,
     in Material m,
     in vec3 normal) {
+  ray.light_multiplier *= 1 - m.diffuse_ammount_;
   vec3 light_rnd_pos = light_pos + light_distr();
 
   vec3 light_from_point = light_rnd_pos - ray.origin;
@@ -288,19 +270,10 @@ void compute_light(
 
     if (hit.distance > light_distance) {
       float angle = angle_x_distance * light_distance_inv;
-      float a = dot(ray.norm_ray, light_from_point_norm);
-      float specular = 0;
-      if (a > 0) {
-        // Clamp
-        a = min(a, 1.f);
-        specular = powf(a, m.specular_exponent_);
-      }
-      float total_distance = light_distance + ray.distance_from_eye;
 
-      // FIXME: should angle be only used for diffuse color?
-      vec3 reflected_light = (color * light_color) * m.diffuse_ammount_
-        + (specular_color * light_color) * (1-m.diffuse_ammount_) * specular;
-      ray.intensity += reflected_light * ray.color_filter * (angle / (total_distance * total_distance + 1e-12f));
+        vec3 reflected_light = (color * light_color) * m.diffuse_ammount_ * light_size2;
+        float diffuse_attenuation = cos_a / M_PI;
+        ray.intensity += reflected_light * ray.color_filter * (diffuse_attenuation * angle / ((float)M_PI* (light_distance2 + 1e-12f)));
     }
   }
 
@@ -308,42 +281,43 @@ void compute_light(
 
   float r = reflect_gen(SW(gen));
   bool is_diffuse = r < m.diffuse_ammount_;
-    ray.norm_ray = scatter(ray.norm_ray, is_diffuse ? 1 : m.specular_exponent_);
+  if (is_diffuse) {
+    ray.norm_ray = scatter(ray.norm_ray, 1);
     float angle = dot(ray.norm_ray, normal);
     if (angle <= 0) {
       ray.flags |= FLAG_TERMINATE;
       return;
     }
-    ray.color_filter = ray.color_filter * angle * (is_diffuse ? color : specular_color);
+    ray.color_filter = ray.color_filter * color * (angle / (float)M_PI);
+  } else {
+    // specular, alter reflected ray
+    ray.norm_ray = scatter(ray.norm_ray, m.specular_exponent_);
+    float angle = dot(ray.norm_ray, normal);
+    if (angle <= 0) {
+      ray.flags |= FLAG_TERMINATE;
+      return;
+    }
+    ray.color_filter = ray.color_filter * specular_color;
+  }
 }
 
 vec3 light_trace_new(
     in Hit p,
     REF(RayData) ray) {
-  float distance_from_origin = p.closest_point_distance_from_viewer_ -
-    sqrt(light_size2 - p.distance_from_object_center2_);
-
-//  vec3 intersection = origin + norm_ray * distance_from_origin;
-//  vec3 distance_from_light_vector = intersection - light_pos;
-
-//  vec3 normal = distance_from_light_vector * light_inv_size;
-//  float angle = -dot(norm_ray, normal);
-  float total_distance = ray.distance_from_eye + distance_from_origin;
-
-  vec3 res = ray.intensity + light_color * ray.color_filter * (1.f / (total_distance * total_distance + 1e-12f));
-  assert(isfinite(res.size2()));
-  return res;
+  ray.flags |= FLAG_TERMINATE;
+  ray.intensity += light_color * ray.color_filter * ray.light_multiplier;
 }
 
 void room_trace(
     REF(RayData) ray) {
   RoomHit p = room_hit(ray.norm_ray, ray.origin);
   ray.origin = p.intersection;
+  float cos_a = -dot(ray.norm_ray, p.normal);
   ray.norm_ray = p.reflection;
-  ray.distance_from_eye += p.min_dist;
 
   compute_light(
       ray,
+      cos_a,
       p.color,
       p.color,
       p.material,
@@ -351,7 +325,7 @@ void room_trace(
 }
 
 void trace_ball0_internal(REF(RayData) ray, float size) {
-  float start_distance = ray.distance_from_eye;
+  float inside_distance = 0;
   for (int i = 0; i < max_internal_reflections; i++) {
     vec3 ball_vector = balls[0].position_ - ray.origin;
     float closest_point_distance_from_viewer = dot(ray.norm_ray, ball_vector);
@@ -360,7 +334,7 @@ void trace_ball0_internal(REF(RayData) ray, float size) {
     vec3 distance_from_ball_vector = intersection - balls[0].position_;
     vec3 normal = normalize(distance_from_ball_vector);
     ray.origin = balls[0].position_ + normal * size;
-    ray.distance_from_eye += distance_from_origin;
+    inside_distance += distance_from_origin;
 
     if (reflect_gen(SW(gen)) < fresnel(glass_refraction_index, normal, ray.norm_ray)) {
       vec3 ray_reflection = ray.norm_ray - normal * (2 * dot(ray.norm_ray, normal));
@@ -369,7 +343,7 @@ void trace_ball0_internal(REF(RayData) ray, float size) {
       continue;
     } else {
       ray.norm_ray = refract(glass_refraction_index, normal, ray.norm_ray);
-      float td = ray.distance_from_eye - start_distance; // travel distance
+      float td = inside_distance;
       vec3 extinction = vec3(expf(-absorption.x * td), expf(-absorption.y * td), expf(-absorption.z * td));
       ray.color_filter = ray.color_filter * extinction;
       return;
@@ -391,14 +365,16 @@ void make_reflection(
     in vec3 color,
     in Material m,
     in vec3 normal) {
+  float cos_a = -dot(ray.norm_ray, normal);
   ray.norm_ray = ray.norm_ray - normal * (2 * dot(ray.norm_ray, normal));
-  compute_light(ray, color, color, m, normal);
+  compute_light(ray, cos_a, color, color, m, normal);
 }
 
 void triangle_trace (
     REF(RayData) ray,
     in Hit2 p) {
   vec3 normal = tris[p.id].normal;
+  float cos_a = -dot(ray.norm_ray, normal);
   ray.origin = ray.origin + ray.norm_ray * p.distance;
 //  assert(ray.origin.x >= kdtree.bbox.min.x);
 //  assert(ray.origin.y >= kdtree.bbox.min.y);
@@ -407,12 +383,11 @@ void triangle_trace (
 //  assert(ray.origin.y <= kdtree.bbox.max.y);
 //  assert(ray.origin.z <= kdtree.bbox.max.z);
 
-  ray.distance_from_eye += p.distance;
   Material m {1.00, 10000000};
   
   if (true || reflect_gen(SW(gen)) < fresnel(diamond_refraction_index, normal, ray.norm_ray)) {
     ray.norm_ray = ray.norm_ray - normal * (2 * dot(ray.norm_ray, normal));
-    compute_light(ray, vec3(0.2), vec3(0.2), m, normal);
+    compute_light(ray, cos_a, vec3(0.2), vec3(0.2), m, normal);
   } else {
 //    float start_distance = ray.distance_from_eye;
     ray.norm_ray = refract(diamond_refraction_index, normal, ray.norm_ray);
@@ -429,7 +404,6 @@ void triangle_trace (
 //      printf("  hit %d %f\n", i, hit.distance);
       normal = tris[hit.id].normal;
       ray.origin = ray.origin + ray.norm_ray * hit.distance;
-      ray.distance_from_eye += hit.distance;
 //      assert(ray.origin.x >= kdtree.bbox.min.x);
 //      assert(ray.origin.y >= kdtree.bbox.min.y);
 //      assert(ray.origin.z >= kdtree.bbox.min.z);
@@ -441,7 +415,8 @@ void triangle_trace (
         ray.norm_ray = ray.norm_ray - normal * (2 * dot(ray.norm_ray, normal));
       } else {
         ray.norm_ray = refract(diamond_refraction_index, normal, ray.norm_ray);
-        compute_light(ray, vec3(1), vec3(1), m, normal);
+        float cos_a = -dot(ray.norm_ray, normal);
+        compute_light(ray, cos_a, vec3(1), vec3(1), m, normal);
         break;
       }
     }
@@ -459,7 +434,6 @@ void ball_trace (
     sqrt(ball.size2_ - p.distance_from_object_center2_);
 
   ray.origin = ray.origin + ray.norm_ray * distance_from_origin;
-  ray.distance_from_eye += distance_from_origin;
 
   vec3 distance_from_ball_vector = ray.origin - ball.position_;
   vec3 normal = distance_from_ball_vector * ball.inv_size_;
@@ -488,7 +462,8 @@ vec3 trace (RayData ray) {
 
     if (light.closest_point_distance_from_viewer_ <
         hit.distance) {
-      return light_trace_new(light, ray);
+      light_trace_new(light, ray);
+      return ray.intensity;
     }
 
     if (depth == max_depth - 1) ray.flags |= FLAG_TERMINATE;
@@ -510,10 +485,10 @@ vec3 trace_new (
   RayData ray;
   ray.origin = origin;
   ray.norm_ray = norm_ray;
-  ray.distance_from_eye = 0;
   ray.color_filter = vec3(1,1,1);
   ray.intensity = vec3(0,0,0);
   ray.flags = 0;
+  ray.light_multiplier = 1;
 
   vec3 color = trace(ray);
   return max(color, vec3(0));
