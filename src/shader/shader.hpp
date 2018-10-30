@@ -53,16 +53,20 @@ Hit ball_hit(in int id, in vec3 norm_ray, in vec3 origin) {
   }
   return Hit(id, closest_point_distance_from_viewer, distance_from_object_center2);
 }
-Hit2 bbox_hit(in vec3 norm_ray, in vec3 origin) {
+Hit2 bbox_hit(in vec3 norm_ray, in vec3 origin, float rmin, float rmax, bool front) {
   Ray r = Ray::make(origin, norm_ray);
   auto res = r.intersect(kdtree.bbox);
 //  printf("Trace ray %f %f\n", res.first, res.second);
-  float tmin = std::max(0.f, res.first);
-  float tmax = res.second;
+  float tmin = std::max(rmin, res.first);
+  float tmax = std::min(res.second, rmax);
   if (tmin > tmax) {
+    if (!front) printf("bbox miss {%f %f %f} vs {%f %f %f}..{%f %f %f}\n",
+        origin.x, origin.y, origin.z,
+        kdtree.bbox.min.x, kdtree.bbox.min.y, kdtree.bbox.min.z, 
+        kdtree.bbox.max.x, kdtree.bbox.max.y, kdtree.bbox.max.z);
     return {-1, max_distance};
   }
-  return r.traverse_nonrecursive(0, tmin, tmax);
+  return r.traverse_nonrecursive(0, tmin, tmax, front);
 #if 0
   vec3 tMin = (bbox.a_ - origin) / norm_ray;
   vec3 tMax = (bbox.b_ - origin) / norm_ray;
@@ -280,9 +284,9 @@ void compute_light(
     float light_distance = 1.f/light_distance_inv;
     vec3 light_from_point_norm = light_from_point * light_distance_inv;
 
-    Hit2 hit = bbox_hit(light_from_point_norm, ray.origin);
+    Hit2 hit = bbox_hit(light_from_point_norm, ray.origin, kEpsilon, max_distance, true);
 
-    if (hit.id == -1 || hit.distance > light_distance) {
+    if (hit.distance > light_distance) {
       float angle = angle_x_distance * light_distance_inv;
       float a = dot(ray.norm_ray, light_from_point_norm);
       float specular = 0;
@@ -396,11 +400,55 @@ void triangle_trace (
     in Hit2 p) {
   vec3 normal = tris[p.id].normal;
   ray.origin = ray.origin + ray.norm_ray * p.distance;
+//  assert(ray.origin.x >= kdtree.bbox.min.x);
+//  assert(ray.origin.y >= kdtree.bbox.min.y);
+//  assert(ray.origin.z >= kdtree.bbox.min.z);
+//  assert(ray.origin.x <= kdtree.bbox.max.x);
+//  assert(ray.origin.y <= kdtree.bbox.max.y);
+//  assert(ray.origin.z <= kdtree.bbox.max.z);
+
   ray.distance_from_eye += p.distance;
-  ray.norm_ray = ray.norm_ray - normal * (2 * dot(ray.norm_ray, normal));
+  Material m {1.00, 10000000};
   
-  Material m {0.01, 100000};
-  compute_light(ray, vec3(1), vec3(1), m, normal);
+  if (true || reflect_gen(SW(gen)) < fresnel(diamond_refraction_index, normal, ray.norm_ray)) {
+    ray.norm_ray = ray.norm_ray - normal * (2 * dot(ray.norm_ray, normal));
+    compute_light(ray, vec3(0.2), vec3(0.2), m, normal);
+  } else {
+//    float start_distance = ray.distance_from_eye;
+    ray.norm_ray = refract(diamond_refraction_index, normal, ray.norm_ray);
+
+    for (int i = 0; i < 300; i++) {
+      Hit2 hit = bbox_hit(ray.norm_ray, ray.origin, 0.0001, max_distance, false);
+      if (hit.id == -1) {
+        ray.intensity = vec3(1, 0, 0);
+//        printf("No hit %d\n", i);
+        ray.flags |= FLAG_TERMINATE;
+        ray.color_filter = vec3(3, 0, 0);
+        return;
+      }
+//      printf("  hit %d %f\n", i, hit.distance);
+      normal = tris[hit.id].normal;
+      ray.origin = ray.origin + ray.norm_ray * hit.distance;
+      ray.distance_from_eye += hit.distance;
+//      assert(ray.origin.x >= kdtree.bbox.min.x);
+//      assert(ray.origin.y >= kdtree.bbox.min.y);
+//      assert(ray.origin.z >= kdtree.bbox.min.z);
+//      assert(ray.origin.x <= kdtree.bbox.max.x);
+//      assert(ray.origin.y <= kdtree.bbox.max.y);
+//      assert(ray.origin.z <= kdtree.bbox.max.z);
+
+      if (reflect_gen(SW(gen)) < fresnel(diamond_refraction_index, normal, ray.norm_ray)) {
+        ray.norm_ray = ray.norm_ray - normal * (2 * dot(ray.norm_ray, normal));
+      } else {
+        ray.norm_ray = refract(diamond_refraction_index, normal, ray.norm_ray);
+        compute_light(ray, vec3(1), vec3(1), m, normal);
+        break;
+      }
+    }
+//    float td = ray.distance_from_eye - start_distance; // travel distance
+//    vec3 extinction = vec3(expf(-absorption.x * td), expf(-absorption.y * td), expf(-absorption.z * td));
+//    ray.color_filter = ray.color_filter * extinction;
+  }
 }
 
 void ball_trace (
@@ -435,9 +483,9 @@ vec3 trace (RayData ray) {
 
   int depth = 0;
   while (true) {
-    Hit2 hit = bbox_hit(ray.norm_ray, ray.origin);
-
     Hit light = light_hit(ray.norm_ray, ray.origin);
+    Hit2 hit = bbox_hit(ray.norm_ray, ray.origin, kEpsilon, light.closest_point_distance_from_viewer_, true);
+
     if (light.closest_point_distance_from_viewer_ <
         hit.distance) {
       return light_trace_new(light, ray);

@@ -309,6 +309,12 @@ G       = Switch Sofware / OpenGL renderer
                            case SDL_SCANCODE_Z:
                              if (event.key.state != SDL_PRESSED)
                                SDL_SetWindowGrab(renderer->GetWindow(), SDL_FALSE);
+                           case SDL_SCANCODE_X:
+                             if (event.key.state != SDL_PRESSED) {
+                               diamond_refraction_index = diamond_refraction_index < 2 ? 2.417 : 1.52;
+                               printf("%f\n", diamond_refraction_index);
+                               renderer->reset_accumulate();
+                             }
                            default:
                              // ignore
                              {}

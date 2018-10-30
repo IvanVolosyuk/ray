@@ -19,6 +19,7 @@ INPUT(int, max_depth, 2)
 INPUT(float, lense_blur, 0.0)
 INPUT(int, max_rays, 1)
 INPUT(float, glass_refraction_index, 1.492)
+INPUT(float, diamond_refraction_index, 2.417)
 INPUT(int, max_internal_reflections, 2)
 
 

@@ -1,6 +1,9 @@
 PROF=-ggdb -pg -no-pie
 PROF_GEN=-fprofile-generate
 PROF_USE=-fprofile-use
+OPT=-momit-leaf-frame-pointer \
+	  -mtune=native -pipe -march=native -mmmx -msse -msse2 \
+	  -msse3 -mssse3 -mfpmath=sse
 # Win64
 ifeq ($(OS),Windows_NT)
 LDFLAGS=-L. -L/usr/lib/w32api -lmingw32 -lSDL2main -lSDL2 -L/c/cygwin/home/Ivan/1/SDL2-2.0.8/x86_64-w64-mingw32/lib -lglew32 -lopengl32 -lpng
@@ -8,8 +11,9 @@ else
 LDFLAGS=-L. -lSDL2 -lGL -lSDL2 -lGLEW -lpthread -lpng -L/home/ivan/experiments/NVIDIA-OptiX-SDK-5.1.0-linux64/lib64 -loptix -loptixu
 endif
 CFLAGS+=-I../src -ggdb
-CXXFLAGS+=-I../src -ggdb -I/usr/include/SDL2 -std=c++17 \
-	  -O3 -Wall -Ic:\MinGW-w64\mingw64\include \
+CXXFLAGS+=-I../src -I/usr/include/SDL2 -std=c++17 \
+	  -O3 $(OPT) -Wall \
+	  -Ic:\MinGW-w64\mingw64\include \
 	  -Ic:\msys64\mingw64\include \
 	  -DIMGUI_IMPL_OPENGL_LOADER_GLEW \
 	  -I../src/imgui -I/home/ivan/experiments/NVIDIA-OptiX-SDK-5.1.0-linux64/include \

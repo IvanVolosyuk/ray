@@ -65,11 +65,11 @@ struct Ray {
 //  float dir[3];  // direction
   vec3 idir; // inverted direction
   vec3 dir;  // direction
-  Hit2 traverse_recursive(int idx, float rmin, float rmax) const;
-  Hit2 traverse_nonrecursive(int idx, float rmin, float rmax) const;
+  Hit2 traverse_recursive(int idx, float rmin, float rmax, bool front) const;
+  Hit2 traverse_nonrecursive(int idx, float rmin, float rmax, bool front) const;
   bool intersect(AABB box, float* tmin_out) const;
   std::pair<float,float> intersect(AABB box) const;
-  bool triangle_intersect(const tri& tr, float* t, float* u, float* v) const;
+  bool triangle_intersect(const tri& tr, float* t, float* u, float* v, bool front) const;
   static Ray make(vec3 origin, vec3 dir) {
     vec3 idir { 1.f/dir[0], 1.f/dir[1], 1.f/dir[2]};
     if (!isfinite(idir[0]) || idir[0] > 1e10 || idir[0] < -1e10) idir[0] = 1e10;
@@ -86,27 +86,27 @@ struct StackEntry {
 };
 
 #define MAX_STACK 100
-StackEntry stack[MAX_STACK];
 int64_t nhits = 0;
 int64_t ntraverses = 0;
 int64_t nintersects = 0;
 
 bool Ray::triangle_intersect( 
     const tri& tr, 
-    float* t, float* u, float* v) const { 
+    float* t, float* u, float* v, bool front) const { 
 //  printf("[0]{%f %f %f}, [1]{%f %f %f}, [2]{%f %f %f}\norigin {%f %f %f} dir {%f %f %f}\n",
 //      tr.vertex[0].x, tr.vertex[0].y, tr.vertex[0].z,
 //      tr.vertex[1].x, tr.vertex[1].y, tr.vertex[1].z,
 //      tr.vertex[2].x, tr.vertex[2].y, tr.vertex[2].z,
 //      origin.x, origin.y, origin.z,
 //      dir.x, dir.y, dir.z);
-#define MOLLER_TRUMBORE
+
+#define CULLING
+//#define MOLLER_TRUMBORE
 #ifdef MOLLER_TRUMBORE 
     vec3 v0v1 = tr.vertex[1] - tr.vertex[0]; 
     vec3 v0v2 = tr.vertex[2] - tr.vertex[0]; 
     vec3 pvec = cross(dir, v0v2); 
     float det = dot(v0v1, pvec); 
-#define CULLING
 #ifdef CULLING 
     // if the determinant is negative the triangle is backfacing
     // if the determinant is close to 0, the ray misses the triangle
@@ -136,19 +136,18 @@ bool Ray::triangle_intersect(
     // check if ray and plane are parallel ?
     float NdotRayDirection = dot(N, dir); 
 #ifdef CULLING 
-    if (NdotRayDirection > 0) {
+    if (front ? NdotRayDirection > kEpsilon : NdotRayDirection < -kEpsilon) {
       return false;
     }
 #else
-    if (fabs(NdotRayDirection) < kEpsilon) // almost 0 
+    if (fabs(NdotRayDirection) < kEpsilon) { // almost 0 
+//      printf("%f\n", NdotRayDirection);
         return false; // they are parallel so they don't intersect ! 
+    }
 #endif
  
-    // compute d parameter using equation 2
-    float d = dot(N, tr.vertex[0]); 
- 
     // compute t (equation 3)
-    *t = (dot(N, origin) + d) / NdotRayDirection; 
+    *t = (dot(N, tr.vertex[0] - origin)) / NdotRayDirection; 
     // check if the triangle is in behind the ray
     if (*t < 0) return false; // the triangle is behind 
  
@@ -183,7 +182,7 @@ bool Ray::triangle_intersect(
 #define likely(x) __builtin_expect((x),1)
 #define unlikely(x) __builtin_expect((x),0)
 
-Hit2 Ray::traverse_recursive(int idx, float rmin, float rmax) const {
+Hit2 Ray::traverse_recursive(int idx, float rmin, float rmax, bool front) const {
   ntraverses++;
   //printf("%d min %f max %f\n", idx, rmin, rmax);
   int axe = kdtree.item[idx].split_axe;
@@ -195,7 +194,7 @@ Hit2 Ray::traverse_recursive(int idx, float rmin, float rmax) const {
       nintersects++;
 //      printf("** %d", box_id);
       float new_dist, u, v;
-      if (triangle_intersect(tris[box_id], &new_dist, &u, &v)) {
+      if (triangle_intersect(tris[box_id], &new_dist, &u, &v, front)) {
         
 //        printf("* %d * %f vs %f rmax %f\n", box_id, new_dist, dist, rmax);
         if (new_dist < dist) {
@@ -221,17 +220,21 @@ Hit2 Ray::traverse_recursive(int idx, float rmin, float rmax) const {
 //  printf("dist %f rmin %f rmax %f\n", dist, rmin, rmax);
   Hit2 hit;
   if (dist < rmin) {
-    if ((hit = traverse_recursive(kdtree.item[idx].child[child_idx^1], rmin, rmax)).id != -1) return hit;
+    if ((hit = traverse_recursive(kdtree.item[idx].child[child_idx^1], rmin, rmax, front)).id != -1) return hit;
   } else if (dist > rmax) {
-    if ((hit = traverse_recursive(kdtree.item[idx].child[child_idx], rmin, rmax)).id != -1) return hit;
+    if ((hit = traverse_recursive(kdtree.item[idx].child[child_idx], rmin, rmax, front)).id != -1) return hit;
   } else {
-    if ((hit = traverse_recursive(kdtree.item[idx].child[child_idx], rmin, dist)).id != -1) return hit;
-    if ((hit = traverse_recursive(kdtree.item[idx].child[child_idx^1], dist, rmax)).id != -1) return hit;
+    if ((hit = traverse_recursive(kdtree.item[idx].child[child_idx], rmin, dist, front)).id != -1) return hit;
+    if ((hit = traverse_recursive(kdtree.item[idx].child[child_idx^1], dist, rmax, front)).id != -1) return hit;
   }
   return {-1, rmax};
 };
 
-inline Hit2 Ray::traverse_nonrecursive(int idx, float rmin, float rmax) const {
+inline Hit2 Ray::traverse_nonrecursive(int idx, float rmin, float rmax, bool front) const {
+  StackEntry stack[MAX_STACK];
+//  int max_depth = reflect_gen(SW(gen)) * 10;
+//  float orig_rmin = rmin;
+//  int depth = 0;
   // TODO: Clamp rmin, rmax
   int stack_pos = 0;
   stack[stack_pos].idx = 0; // root
@@ -248,6 +251,7 @@ inline Hit2 Ray::traverse_nonrecursive(int idx, float rmin, float rmax) const {
     while (true) {
       auto& item = kdtree.item[idx];
       int axe = item.split_axe;
+//      depth++;
 //      printf("Look into %d axe %d line %f rmin %f rmax %f\n",
 //          idx, axe, item.split_line, rmin, rmax);
       if (likely(axe == -1)) {
@@ -258,10 +262,17 @@ inline Hit2 Ray::traverse_nonrecursive(int idx, float rmin, float rmax) const {
 //          printf("Candidate: %d\n", box_id);
           nintersects++;
           float new_dist, u, v;
-          if (likely(triangle_intersect(tris[box_id], &new_dist, &u, &v))) {
+          if (likely(triangle_intersect(tris[box_id], &new_dist, &u, &v, front))) {
 //            printf("Match: %f %f %f\n", new_dist, u, v);
 
 //            return {box_id, new_dist};
+          if (new_dist < rmin) {
+//            if (!front) printf("Skip too close %f %f\n", rmin, new_dist);
+            continue;
+          }
+//          if (new_dist > rmax) {
+//            if (!front) printf("Skip too far %f %f \n", new_dist, rmax);
+//          }
             if (new_dist <= dist) {
               dist = new_dist;
               hit = box_id;
@@ -296,6 +307,13 @@ inline Hit2 Ray::traverse_nonrecursive(int idx, float rmin, float rmax) const {
         idx = item.child[child_idx];
 //        printf("dist %f > rmax %f : [%d] = %d (%f:%f)\n", dist, rmax, child_idx, idx, rmin, rmax);
       } else {
+//      if (depth > max_depth & rmin > orig_rmin) {
+//        vec3 normal;
+//        normal[axe] = dir[axe] > 0 ? -1 : 1;
+//        vec3 color;
+//        color[axe] = 0.8;
+//        return {1, rmin, normal, color};
+//      }
         // push 1 dist rmax
 //        printf("both : dist %f [%d] = %d (%f:%f), [%d] = %d (%f:%f)\n",
 //            dist, child_idx, item.child[child_idx], rmin, dist,
@@ -310,7 +328,7 @@ inline Hit2 Ray::traverse_nonrecursive(int idx, float rmin, float rmax) const {
       }
     }
   }
-  return {-1, 0};
+  return {-1, max_distance};
 };
 
 //  float line;
@@ -325,7 +343,8 @@ int other_axe[3][2] = {
   {1,2}
 };
 
-int build_tree(const AABB& bbox, const std::vector<Event>& events) {
+int build_tree(const AABB& bbox, const std::vector<Event>& events, int depth) {
+  assert(depth < MAX_STACK - 2);
   float size[3];
   float cut_surface[3];
   int NL[3], NR[3], NP[3];
@@ -346,8 +365,8 @@ int build_tree(const AABB& bbox, const std::vector<Event>& events) {
   }
 
   int best_axe = -1;
-  float split_cost = 0.1;  // versus triangle intersection
-  float best_cost = events.size() / 6;
+  float split_cost = 5.0;  // versus triangle intersection
+  float best_cost = 0.8 * events.size() / 6;
   float best_line = -1;
 //  printf("Events: %ld\n", events.size());
 //  printf("No split: {%f %f %f} {%f %f %f} cost: %f\n",
@@ -430,8 +449,8 @@ int build_tree(const AABB& bbox, const std::vector<Event>& events) {
   kdtree.item.push_back({best_axe, best_line, {-1, -1}});
   int res = kdtree.item.size() - 1;
 //  printf("******* kd %d\n", res);
-  int left_child = build_tree(left_aabb, left);
-  int right_child = build_tree(right_aabb, right);
+  int left_child = build_tree(left_aabb, left, depth+1);
+  int right_child = build_tree(right_aabb, right, depth+1);
   kdtree.item[res].child[0] = left_child;
   kdtree.item[res].child[1] = right_child;
   return res;
@@ -439,12 +458,12 @@ int build_tree(const AABB& bbox, const std::vector<Event>& events) {
 
 int build() {
   AABB bbox = boxes[0];
-  for (int i = 1; i < boxes.size(); i++) {
+  for (size_t i = 1; i < boxes.size(); i++) {
     bbox = bbox.combine(boxes[i]);
   }
   kdtree.bbox = bbox;
   std::vector<Event> events;
-  for (int i = 0; i < boxes.size(); i++) {
+  for (size_t i = 0; i < boxes.size(); i++) {
     const AABB& a = boxes[i];
     for (int x = 0; x < 3; x++) {
       events.push_back(Event{a.min[x], -1, i, x});
@@ -452,10 +471,7 @@ int build() {
     }
   }
   std::sort(events.begin(), events.end());
-
-  assert(build_tree(bbox, events) == 0);
-  assert(kdtree.item[0].child[0] != -1);
-  assert(kdtree.item[0].child[1] != -1);
+  assert(build_tree(bbox, events, 0) == 0);
   return 0;
 }
 
@@ -497,6 +513,10 @@ void gen2() {
         bbox.max[j] = std::max(bbox.max[j], t.vertex[i][j]);
       }
     }
+//    for (int i = 0; i < 3; i++) {
+//      bbox.min[i] -= 0.0001;
+//      bbox.max[i] += 0.0001;
+//    }
     boxes.push_back(bbox);
   }
 
@@ -527,14 +547,14 @@ void trace_parent(size_t kd, const tri& t) {
       if (t.vertex[v][item.split_axe] > item.split_line) nright++;
       if (t.vertex[v][item.split_axe] == item.split_line) neq++;
     }
-    if (item.child[0] == kd) {
+    if (item.child[0] == (int)kd) {
       printf("Parent %ld axe %d line %f child[0] left %d eq %d right %d\n", i, item.split_axe, item.split_line,
           nleft, neq, nright);
       assert (nleft > 0);
       trace_parent(i, t);
       return;
     }
-    if (item.child[1] == kd) {
+    if (item.child[1] == (int)kd) {
       printf("Parent %ld axe %d line %f child[1] left %d eq %d right %d\n", i, item.split_axe, item.split_line,
           nleft, neq, nright);
       assert (nright > 0);
@@ -559,16 +579,16 @@ void find(int tri) {
 void test_ray(const Ray& r) {
   int best = -1;
   float distance = 1e10;
-  for (int i = 0; i < tris.size(); i++) {
+  bool ambigious = false;
+  for (size_t i = 0; i < tris.size(); i++) {
     float new_distance, u, v;
 //    printf("%d: ", i);
-    if (r.triangle_intersect(tris[i], &new_distance, &u, &v)) {
+    if (r.triangle_intersect(tris[i], &new_distance, &u, &v, true)) {
 //      printf("Match: %f %f %f bbox {%f %f %f} {%f %f %f}\n", new_distance, u, v,
 //          boxes[i].min[0], boxes[i].min[1], boxes[i].min[2],
 //          boxes[i].max[0], boxes[i].max[1], boxes[i].max[2]);
       if (new_distance == distance) {
-        // Ambigious match
-        return;
+        ambigious = true;
       }
       if (new_distance >= 0 && new_distance < distance) {
         distance = new_distance;
@@ -583,7 +603,11 @@ void test_ray(const Ray& r) {
   if (res.first <= res.second) {
     float tmin = std::max(0.f, res.first);
     float tmax = std::max(0.f, res.second);
-    best_ray = r.traverse_nonrecursive(0, tmin, tmax).id;
+    best_ray = r.traverse_nonrecursive(0, tmin, tmax, true).id;
+  }
+  if (ambigious) {
+    assert(best_ray != -1);
+    return;
   }
 //  printf("%d vs %d \n", best, best_ray);
   if (best != best_ray && best_ray == -1) {
@@ -606,15 +630,16 @@ void load_stl(const char* path) {
   }
   struct {
     char header[80];
-    int32_t size;
+    uint32_t size;
   } header;
 
   if (fread(&header, sizeof(header), 1, f) != 1) {
     printf("Wrong header: %s\n", path);
     exit(1);
   }
-  if (header.size < 0 || header.size > 1000) {
+  if (header.size < 0 || header.size > 10000000) {
     printf("Wrong size: %d for %s\n", header.size, path);
+    exit(1);
   }
   struct {
     tri t;
@@ -633,10 +658,27 @@ void load_stl(const char* path) {
       validate(record.t.normal[i]);
       for (int j = 0; j < 3; j++) {
         validate(record.t.vertex[j][i]);
-        record.t.vertex[j][i] /= 30;
-//        record.t.vertex[j][2] += 0.0;
+        record.t.vertex[j][i] /= 40;
       }
     }
+    for (int i = 0; i < 3; i++) {
+//      float z = record.t.vertex[i].z;
+//      record.t.vertex[i].z = record.t.vertex[i].y;
+//      record.t.vertex[i].y = -z;
+      record.t.vertex[i].z += 0.0;
+    }
+
+//      assert(record.t.normal.size2() > 0.99 && record.t.normal.size2() < 1.01);
+      vec3 computed_normal = normalize(cross(record.t.vertex[1] - record.t.vertex[0],
+            record.t.vertex[2] - record.t.vertex[0]));
+//      assert(dot(record.t.normal, computed_normal) > 0);
+
+      record.t.normal = computed_normal;
+//      float sz = (computed_normal + normalize(record.t.normal)).size();
+//      printf("%i: %f\n", i, sz);
+//      assert((computed_normal + record.t.normal).size2() < 0.01f);
+//      assert((record.t.normal + cross(record.t.vertex[2] - record.t.vertex[1],
+//              record.t.vertex[1] -record.t.vertex[0])).size2() < 0.01f);
     tris.push_back(record.t);
   }
   assert(fread(&record, 1, 1, f) == 0);
@@ -644,27 +686,28 @@ void load_stl(const char* path) {
   printf("Loaded %ld triangles\n", tris.size());
 }
 
-int64_t ntests = 3000000;
+int64_t ntests = 300000;
 
 void test_rays() {
   vec3 origin {200, 886.5, 778};
   vec3 idir { 1, 1e10f, 1e10f};
   Ray r { {origin[0], origin[1], origin[2]}, {idir[0], idir[1], idir[2]} };
   test_ray(r);
+  vec3 center = (kdtree.bbox.max - kdtree.bbox.min) * 0.5f;
   for (int i = 0; i < ntests; i++) {
 
     vec3 origin {
-      (float)drand48() * 120.f - 40,
-      (float)drand48() * 120.f - 40,
-      (float)drand48() * 120.f - 40
+      (float)drand48() * 4.f - 2.f,
+      (float)drand48() * 4.f - 2.f,
+      (float)drand48() * 4.f - 2.f
     };
     int axe = rand() % 3;
-    int side = (rand() % 2) * 120 - 40;
+    float side = (rand() % 2) * 4 - 2.f + drand48() * 0.5 - 0.25;
     origin[axe] = side;
-    vec3 dir = {
-      (float)drand48(),
-      (float)drand48(),
-      (float)drand48()
+    vec3 dir = normalize(center - origin) + vec3 {
+      (float)drand48() * 0.01f - 0.005f,
+      (float)drand48() * 0.01f - 0.005f,
+      (float)drand48() * 0.01f - 0.005f
     };
     dir = normalize(dir);
     Ray r = Ray::make(origin, dir);

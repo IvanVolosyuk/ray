@@ -24,17 +24,19 @@ void print(const char*, const char* v) {
 #include "shader/shader.hpp"
 
 std::unique_ptr<Renderer> SoftwareRenderer::Create(int window_width, int window_height) {
-  ntests = 300000;
   tris.clear();
   boxes.clear();
   kdtree.item.clear();
-  load_stl("/home/ivan/Downloads/DiamondCleaned2a.stl");
+//  load_stl("/home/ivan/Downloads/DiamondCleaned2a.stl");
+//  load_stl("/home/ivan/Downloads/dinifix.stl");
+  load_stl("/home/ivan/Downloads/PumpkinsCombined.stl");
+//  load_stl("/home/ivan/Downloads/Homme135-140.stl");
   gen2();
   build();
   printf("Tree size: %ld {%f %f %f} {%f %f %f}\n", kdtree.item.size(),
       kdtree.bbox.min[0], kdtree.bbox.min[1],kdtree.bbox.min[2],
       kdtree.bbox.max[0], kdtree.bbox.max[1],kdtree.bbox.max[2]);
-  test_rays();
+//  test_rays();
 
 
   printf("Boxes %ld Hits %ld Intersects %ld Traverses %ld Traverses per ray %f\n",
@@ -344,5 +346,6 @@ void SoftwareRenderer::draw() {
 
 void SoftwareRenderer::reset_accumulate() {
   base_frame_ = frame_;
+//  printf("Origin {%f %f %f} dir {%f %f %f}\n", viewer.x, viewer.y, viewer.z, sight.x, sight.y, sight.z);
 }
 
