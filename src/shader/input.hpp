@@ -10,8 +10,8 @@ INPUT(vec3, viewer, vec3(0, -5.5, 1.5))
 INPUT(vec3, sight, normalize(vec3(0., 1, -0.1)))
 INPUT(vec3, absorption, vec3(0.17,0.17,0.53))
 INPUT(float, focused_distance, 3.1)
-INPUT(float, light_size, 0.9f)
-INPUT(float, light_size2, 0.8f) // light_size * light_size
+INPUT(float, light_size, 3)
+INPUT(float, light_size2, 3*3) // light_size * light_size
 //INPUT(float, light_inv_size, 1.1f) // 1.f / light_size
 INPUT(int, frame_num, 0) // 1.f / light_size
 //INPUT(float, diffuse_attenuation, 0.4)

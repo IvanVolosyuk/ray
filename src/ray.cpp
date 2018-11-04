@@ -62,7 +62,7 @@ int main(int argc, char** argv) {
     // https://www.textures.com/download/pbr0075/133109?q=ceiling
     ceiling_tex = Texture::Load("TexturesCom_Concrete_Ceiling_1K", 100, 0.95);
     // https://www.textures.com/download/pbr0217/133254?q=floor
-    floor_tex = Texture::Load("TexturesCom_Wood_ParquetStrip_1K", 500, 0.95);
+    floor_tex = Texture::Load("TexturesCom_Wood_ParquetStrip_1K", 500, 1.00);
 
     if (SDL_Init( SDL_INIT_VIDEO) < 0) {
       std::cerr << "Init failed: " << SDL_GetError() << std::endl;

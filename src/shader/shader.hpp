@@ -156,6 +156,19 @@ RoomHit room_hit(in vec3 norm_ray, in vec3 origin) {
       diffuse_ammount_##N);                             \
 }
 
+#if 1
+  if (t2.y < t2.z || t2.x < t2.z || norm_ray.z > 0) {
+    return RoomHit{max_distance};
+
+  } else {
+    min_dist = t2.z;
+    normal = vec3(0, 0, sign(-norm_ray.z));
+    U = vec3(1, 0, 0);
+    V = vec3(0, 1, 0);
+    FINISH(0, intersection.x * 0.2f, intersection.y * 0.2f);
+  }
+
+#else
   if (t2.y < t2.z) {
     if (t2.x < t2.y) {
       min_dist = t2.x;
@@ -191,6 +204,7 @@ RoomHit room_hit(in vec3 norm_ray, in vec3 origin) {
       }
     }
   }
+#endif
 }
 
 Hit light_hit(in vec3 norm_ray, in vec3 origin) {
@@ -254,7 +268,7 @@ void compute_light(
     in vec3 specular_color,
     in Material m,
     in vec3 normal) {
-  ray.light_multiplier *= 1 - m.diffuse_ammount_;
+  ray.light_multiplier = 0;
   vec3 light_rnd_pos = light_pos + light_distr();
 
   vec3 light_from_point = light_rnd_pos - ray.origin;
@@ -269,11 +283,20 @@ void compute_light(
     Hit2 hit = bbox_hit(light_from_point_norm, ray.origin, kEpsilon, max_distance, true);
 
     if (hit.distance > light_distance) {
+      float a = dot(ray.norm_ray, light_from_point_norm);
+      float specular = 0;
+      if (a > 0) {
+        // Clamp
+        a = min(a, 1.f);
+        specular = powf(a, m.specular_exponent_);
+      }
+
       float angle = angle_x_distance * light_distance_inv;
 
         vec3 reflected_light = (color * light_color) * m.diffuse_ammount_ * light_size2;
         float diffuse_attenuation = cos_a / M_PI;
-        ray.intensity += reflected_light * ray.color_filter * (diffuse_attenuation * angle / ((float)M_PI* (light_distance2 + 1e-12f)));
+        ray.intensity += reflected_light * ray.color_filter * (diffuse_attenuation * angle / ((float)M_PI* (light_distance2 + 1e-12f)))
+          + (color * light_color) * ray.color_filter * (specular * (1 - m.diffuse_ammount_) / m.specular_exponent_);
     }
   }
 
@@ -301,7 +324,7 @@ void compute_light(
   }
 }
 
-vec3 light_trace_new(
+void light_trace_new(
     in Hit p,
     REF(RayData) ray) {
   ray.flags |= FLAG_TERMINATE;
@@ -311,6 +334,11 @@ vec3 light_trace_new(
 void room_trace(
     REF(RayData) ray) {
   RoomHit p = room_hit(ray.norm_ray, ray.origin);
+  if (p.min_dist == max_distance) {
+    ray.intensity = ray.color_filter * vec3(0.02, 0.02, 0.2);
+    ray.flags |= FLAG_TERMINATE;
+    return;
+  }
   ray.origin = p.intersection;
   float cos_a = -dot(ray.norm_ray, p.normal);
   ray.norm_ray = p.reflection;
@@ -373,9 +401,10 @@ void make_reflection(
 void triangle_trace (
     REF(RayData) ray,
     in Hit2 p) {
-  vec3 normal = tris[p.id].normal;
-  float cos_a = -dot(ray.norm_ray, normal);
+//  vec3 normal = tris[p.id].normal;
   ray.origin = ray.origin + ray.norm_ray * p.distance;
+  vec3 normal = p.normal;// hack for sphere normalize(ray.origin);
+  float cos_a = -dot(ray.norm_ray, normal);
 //  assert(ray.origin.x >= kdtree.bbox.min.x);
 //  assert(ray.origin.y >= kdtree.bbox.min.y);
 //  assert(ray.origin.z >= kdtree.bbox.min.z);
@@ -383,11 +412,11 @@ void triangle_trace (
 //  assert(ray.origin.y <= kdtree.bbox.max.y);
 //  assert(ray.origin.z <= kdtree.bbox.max.z);
 
-  Material m {1.00, 10000000};
+  Material m {0.95, 100};
   
   if (true || reflect_gen(SW(gen)) < fresnel(diamond_refraction_index, normal, ray.norm_ray)) {
     ray.norm_ray = ray.norm_ray - normal * (2 * dot(ray.norm_ray, normal));
-    compute_light(ray, cos_a, vec3(0.2), vec3(0.2), m, normal);
+    compute_light(ray, cos_a, p.color, p.color, m, normal);
   } else {
 //    float start_distance = ray.distance_from_eye;
     ray.norm_ray = refract(diamond_refraction_index, normal, ray.norm_ray);
@@ -402,7 +431,7 @@ void triangle_trace (
         return;
       }
 //      printf("  hit %d %f\n", i, hit.distance);
-      normal = tris[hit.id].normal;
+      normal = hit.normal;
       ray.origin = ray.origin + ray.norm_ray * hit.distance;
 //      assert(ray.origin.x >= kdtree.bbox.min.x);
 //      assert(ray.origin.y >= kdtree.bbox.min.y);
@@ -452,6 +481,9 @@ void ball_trace (
   }
 }
 
+float fmaxf(vec3 v) {
+  return std::max(std::max(v.x, v.y), v.z);
+}
 
 vec3 trace (RayData ray) {
 
@@ -474,6 +506,11 @@ vec3 trace (RayData ray) {
       triangle_trace(ray, hit);
     }
     if ((ray.flags & FLAG_TERMINATE) != 0) return ray.intensity;
+    float cutoff = fmaxf(ray.color_filter);
+    if (reflect_gen(SW(gen)) >= cutoff) {
+      return ray.intensity;
+    }
+    ray.color_filter *= 1.f/cutoff;
     depth++;
   }
   return ray.intensity;
@@ -491,5 +528,6 @@ vec3 trace_new (
   ray.light_multiplier = 1;
 
   vec3 color = trace(ray);
+  if (fmaxf(color) > 1e20) color = vec3(0);
   return max(color, vec3(0));
 }

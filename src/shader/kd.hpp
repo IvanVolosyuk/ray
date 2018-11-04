@@ -6,6 +6,7 @@
 //#include <assert.h>
 //#include <math.h>
 #include "common.hpp"
+#include <map>
 
 #define AXE_X 0
 #define AXE_Y 1
@@ -34,9 +35,24 @@ struct AABB {
 
 std::vector<AABB> boxes;
 
+struct tri_stl {
+  vec3 normal;
+  vec3 vertex[3];
+};
+
 struct tri {
   vec3 normal;
   vec3 vertex[3];
+  vec3 vertex_normal[3];
+  float inv_denom;
+
+  tri() {}
+  tri(tri_stl inp) {
+    normal = inp.normal;
+    vertex[0] = inp.vertex[0];
+    vertex[1] = inp.vertex[1];
+    vertex[2] = inp.vertex[2];
+  }
 };
 
 std::vector<tri> tris;
@@ -57,6 +73,8 @@ struct kdtree {
 struct Hit2 {
   int id;
   float distance;
+  vec3 color;
+  vec3 normal;
 };
 
 
@@ -174,6 +192,9 @@ bool Ray::triangle_intersect(
     vec3 vp2 = P - tr.vertex[2]; 
     C = cross(edge2, vp2); 
     if ((*v = dot(N, C)) < 0) return false; // P is on the right side; 
+
+    *u *= tr.inv_denom;
+    *v *= tr.inv_denom;
  
     return true; // this ray hits the triangle 
 #endif 
@@ -188,6 +209,7 @@ Hit2 Ray::traverse_recursive(int idx, float rmin, float rmax, bool front) const 
   int axe = kdtree.item[idx].split_axe;
   if (likely(axe == -1)) {
     float dist = rmax;
+    vec3 color;
     int hit = -1;
     //printf("node boxes: %d %ld\n", kdtree.item[idx].child[0], kdtree.item[idx].boxes.size());
     for (auto& box_id : kdtree.item[idx].boxes) {
@@ -200,6 +222,7 @@ Hit2 Ray::traverse_recursive(int idx, float rmin, float rmax, bool front) const 
         if (new_dist < dist) {
           dist = new_dist;
           hit = box_id;
+          color = vec3(1, u, v);
         }
       }
     }
@@ -209,7 +232,7 @@ Hit2 Ray::traverse_recursive(int idx, float rmin, float rmax, bool front) const 
     } else {
 //      printf("No intersection at rmin=%f rmax=%f idx %d\n", rmin, rmax, idx);
     }
-    return {hit, dist};
+    return {hit, dist, color};
   }
   float line = kdtree.item[idx].split_line;
 
@@ -229,6 +252,8 @@ Hit2 Ray::traverse_recursive(int idx, float rmin, float rmax, bool front) const 
   }
   return {-1, rmax};
 };
+
+float ray_epsilon = 0.000001;
 
 inline Hit2 Ray::traverse_nonrecursive(int idx, float rmin, float rmax, bool front) const {
   StackEntry stack[MAX_STACK];
@@ -256,35 +281,37 @@ inline Hit2 Ray::traverse_nonrecursive(int idx, float rmin, float rmax, bool fro
 //          idx, axe, item.split_line, rmin, rmax);
       if (likely(axe == -1)) {
         float dist = max_distance;
+        vec3 color(1);
+        vec3 normal;
         int hit = -1;
 //        printf("List of candidates: %ld\n", item.boxes.size());
         for (auto& box_id : item.boxes) {
 //          printf("Candidate: %d\n", box_id);
           nintersects++;
           float new_dist, u, v;
-          if (likely(triangle_intersect(tris[box_id], &new_dist, &u, &v, front))) {
-//            printf("Match: %f %f %f\n", new_dist, u, v);
-
-//            return {box_id, new_dist};
-          if (new_dist < rmin) {
-//            if (!front) printf("Skip too close %f %f\n", rmin, new_dist);
-            continue;
-          }
-//          if (new_dist > rmax) {
-//            if (!front) printf("Skip too far %f %f \n", new_dist, rmax);
-//          }
+          const auto& t = tris[box_id];
+          if (likely(triangle_intersect(t, &new_dist, &u, &v, front))) {
+            if (new_dist < rmin) {
+              continue;
+            }
+            // if (new_dist > rmax) {
+            //   if (!front) printf("Skip too far %f %f \n", new_dist, rmax);
+            // }
             if (new_dist <= dist) {
               dist = new_dist;
               hit = box_id;
+              //              color = vec3(u, v, 1-u-v);
+              // FIXME: compute only for result
+              normal = normalize(t.vertex_normal[0] * u + t.vertex_normal[1] * v + t.vertex_normal[2] * (1-u-v));
             }
           }
         }
         if (unlikely(hit != -1)) {
           nhits++;
           // FIXME
-          return {hit, dist};
+          return {hit, dist, color, normal};
         }
-        rmin = rmax;
+        rmin = rmax - 2 * ray_epsilon;
         break;
       }
       float line = item.split_line;
@@ -294,13 +321,13 @@ inline Hit2 Ray::traverse_nonrecursive(int idx, float rmin, float rmax, bool fro
       float dist = (line - origin[axe]) * idir[axe];
       int child_idx = idir[axe] < 0 ? 1 : 0;
 
-      if (unlikely(dist < rmin)) {
+      if (unlikely(dist < rmin - ray_epsilon)) {
         // push 1 rmin rmax
 //        stack[stack_pos].dist = rmax;
 //        stack[stack_pos++].idx = kdtree.item[idx].child[child_idx^1];
         idx = item.child[child_idx^1];
 //        printf("dist %f < rmin %f : [%d] = %d (%f:%f)\n", dist, rmin, child_idx^1, idx, rmin, rmax);
-      } else if (unlikely(dist > rmax)) {
+      } else if (unlikely(dist > rmax + ray_epsilon)) {
         // push 0 rmin rmax
 //        stack[stack_pos].dist = rmax;
 //        stack[stack_pos++].idx = kdtree.item[idx].child[child_idx];
@@ -323,7 +350,7 @@ inline Hit2 Ray::traverse_nonrecursive(int idx, float rmin, float rmax, bool fro
         // push 0 rmin dist
 //        stack[stack_pos].dist = dist;
 //        stack[stack_pos++].idx = kdtree.item[idx].child[child_idx];
-        rmax = dist;
+        rmax = dist + ray_epsilon;
         idx = item.child[child_idx];
       }
     }
@@ -384,16 +411,16 @@ int build_tree(const AABB& bbox, const std::vector<Event>& events, int depth) {
       NP[axe]--;
     }
     if (line >= bbox.min[axe] && line <= bbox.max[axe]) {
-      float left_area = (line - bbox.min[axe]) / size[axe];
-      assert(left_area >= 0 && left_area <= 1);
-      float right_area = 1 - left_area;
+      float left_area = (line - bbox.min[axe] + ray_epsilon) / size[axe];
+      float right_area = (bbox.max[axe] - line + ray_epsilon) / size[axe];
+      float min_area = 10 * ray_epsilon / size[axe];
       float multiplier = NL[axe] == 0 || NR[axe] == 0 ? 0.8 : 1;
       float left_cost = split_cost + cut_surface[axe] * left_area * (NL[axe] + NP[axe]) * multiplier;
       float right_cost = split_cost + cut_surface[axe] * right_area * (NR[axe] + NP[axe]) * multiplier;
       float cost = std::max(left_cost, right_cost);
       //    printf("Area %f %f NL %d NR %d NP %d cost %f\n",
       //        left_area, right_area, NL[axe], NR[axe], NP[axe], cost);
-      if (cost < best_cost && left_area > 0 && right_area > 0) {
+      if (cost < best_cost && left_area > min_area && right_area > min_area) {
         //      printf("Posible split: axe %d cost %f line %f left_cost %f right_cost %f NL %d NR %d NP %d\n"
         //             "area %f %f\n\n",
         //          axe, cost, line, left_cost, right_cost, NL[axe], NR[axe], NP[axe], left_area, right_area);
@@ -504,13 +531,15 @@ bool Ray::intersect(AABB box, float* tmin) const {
 }
 
 void gen2() {
+  float epsilon = 0; //ray_epsilon;
   for (tri t : tris) {
     AABB bbox;
-    bbox.min = bbox.max = t.vertex[0];
+    bbox.min = t.vertex[0] - vec3(epsilon);
+    bbox.max = t.vertex[0] + vec3(epsilon);
     for (int i = 1; i < 3; i++) {
       for (int j = 0; j < 3; j++) {
-        bbox.min[j] = std::min(bbox.min[j], t.vertex[i][j]);
-        bbox.max[j] = std::max(bbox.max[j], t.vertex[i][j]);
+        bbox.min[j] = std::min(bbox.min[j], t.vertex[i][j] - epsilon);
+        bbox.max[j] = std::max(bbox.max[j], t.vertex[i][j] + epsilon);
       }
     }
 //    for (int i = 0; i < 3; i++) {
@@ -642,11 +671,11 @@ void load_stl(const char* path) {
     exit(1);
   }
   struct {
-    tri t;
+    tri_stl t;
     int16_t attributes;
   } record;
-  static_assert(sizeof(tri) == 4 * 3 * 4);
-  int record_size = sizeof(tri) + sizeof(int16_t);
+  static_assert(sizeof(tri_stl) == 4 * 3 * 4);
+  int record_size = sizeof(tri_stl) + sizeof(int16_t);
   for (size_t i = 0; i < header.size; i++) {
     if (fread(&record, record_size, 1, f) != 1) {
       printf("Problem reading %ld triangle from %s\n", i, path);
@@ -658,14 +687,14 @@ void load_stl(const char* path) {
       validate(record.t.normal[i]);
       for (int j = 0; j < 3; j++) {
         validate(record.t.vertex[j][i]);
-        record.t.vertex[j][i] /= 40;
+//        record.t.vertex[j][i] /= 48;
       }
     }
     for (int i = 0; i < 3; i++) {
 //      float z = record.t.vertex[i].z;
 //      record.t.vertex[i].z = record.t.vertex[i].y;
 //      record.t.vertex[i].y = -z;
-      record.t.vertex[i].z += 0.0;
+//      record.t.vertex[i].z += 1.08;
     }
 
 //      assert(record.t.normal.size2() > 0.99 && record.t.normal.size2() < 1.01);
@@ -684,11 +713,79 @@ void load_stl(const char* path) {
   assert(fread(&record, 1, 1, f) == 0);
   assert(feof(f));
   printf("Loaded %ld triangles\n", tris.size());
+
+  std::map<std::tuple<float, float, float>, std::vector<vec3>> refs;
+  for (size_t i = 0; i < tris.size(); i++) {
+    const auto& t = tris[i];
+    refs[std::make_tuple(t.vertex[0].x, t.vertex[0].y, t.vertex[0].z)].push_back(t.normal * cross(t.vertex[2] - t.vertex[0], t.vertex[1] - t.vertex[0]).size());
+    refs[std::make_tuple(t.vertex[1].x, t.vertex[1].y, t.vertex[1].z)].push_back(t.normal * cross(t.vertex[0] - t.vertex[1], t.vertex[2] - t.vertex[1]).size());
+    refs[std::make_tuple(t.vertex[2].x, t.vertex[2].y, t.vertex[2].z)].push_back(t.normal * cross(t.vertex[0] - t.vertex[2], t.vertex[1] - t.vertex[2]).size());
+  }
+  printf("Vertexes %ld unique %ld\n", tris.size() * 3, refs.size());
+  for (size_t i = 0; i < tris.size(); i++) {
+    auto& t = tris[i];
+    for (int v = 0; v < 3; v++) {
+      std::vector<vec3>& normals = refs[std::make_tuple(t.vertex[v].x, t.vertex[v].y, t.vertex[v].z)];
+      vec3 res;
+      for (const vec3& n : normals) {
+        if (dot(t.normal, normalize(n)) > 0.20) {
+          res += n;
+        }
+      }
+      if (fabs(t.normal.x) == 1 || fabs(t.normal.y) == 1 || fabs(t.normal.z) == 1) {
+        res = t.normal;
+      }
+      res = normalize(res);
+      t.vertex_normal[v] = res;
+    }
+    vec3 c = cross(t.vertex[1] - t.vertex[0], t.vertex[2] - t.vertex[0]);
+    t.inv_denom = 1./c.size();
+  }
 }
 
 int64_t ntests = 300000;
 
+void test_tri() {
+//  printf("\n**********\n");
+  tri t;
+  t.normal = vec3(0, 0, 1);
+  t.vertex[0] = vec3(1, 1, 5);
+  t.vertex[1] = vec3(3, 1, 5);
+  t.vertex[2] = vec3(3, 3, 5);
+  t.vertex_normal[0] = normalize(t.vertex[0]);
+  t.vertex_normal[1] = normalize(t.vertex[1]);
+  t.vertex_normal[2] = normalize(t.vertex[2]);
+  vec3 c = cross(t.vertex[1] - t.vertex[0], t.vertex[2] - t.vertex[0]);
+  t.inv_denom = 1/c.size();
+  printf("c %f inv_denom %f\n", c.size(), t.inv_denom);
+
+  for (int i = 0; i < 100; i++) {
+    float u0 = drand48();
+    float v0 = drand48();
+    if (u0 + v0 > 1) {
+      printf(".");
+      fflush(stdout);
+      continue;
+    }
+
+    assert((t.vertex[0] * u0 + t.vertex[1] * v0 + t.vertex[2] * (1-u0-v0)).y
+        == (t.vertex[0].y * u0 + t.vertex[1].y * v0 + t.vertex[2].y * (1-u0-v0)));
+
+    Ray ray = Ray::make(vec3(0, 0, -5) + (t.vertex[0] * u0 + t.vertex[1] * v0 + t.vertex[2] * (1-u0-v0)), vec3(0, 0, 1));
+    float dist, u, v;
+    printf("u0 %f v0 %f origin %f %f %f idir %f %f %f\n", u0, v0, ray.origin.x, ray.origin.y, ray.origin.z, ray.idir.x, ray.idir.y, ray.idir.z); 
+    assert(ray.triangle_intersect(t, &dist, &u, &v, false) == true);
+    printf("u0 %f v0 %f dist: %f u: %f v: %f\n", u0, v0, dist, u, v); 
+    assert(fabs(u - u0) < 0.001);
+    assert(fabs(v - v0) < 0.001);
+    assert(fabs(dist - 5) < 0.01);
+//    vec3 n = normalize(t.vertex_normal[0] * u + t.vertex_normal[1] * v + t.vertex_normal[2] * (1-u-v));
+  }
+  printf("Done\n");
+}
 void test_rays() {
+  test_tri();
+
   vec3 origin {200, 886.5, 778};
   vec3 idir { 1, 1e10f, 1e10f};
   Ray r { {origin[0], origin[1], origin[2]}, {idir[0], idir[1], idir[2]} };
@@ -714,5 +811,6 @@ void test_rays() {
 //    printf("Ray: {%f %f %f} dir {%f %f %f}\n", origin[0], origin[1], origin[2], dir[0], dir[1], dir[2]);
     test_ray(r);
   }
+
 }
 

@@ -29,8 +29,12 @@ std::unique_ptr<Renderer> SoftwareRenderer::Create(int window_width, int window_
   kdtree.item.clear();
 //  load_stl("/home/ivan/Downloads/DiamondCleaned2a.stl");
 //  load_stl("/home/ivan/Downloads/dinifix.stl");
-  load_stl("/home/ivan/Downloads/PumpkinsCombined.stl");
+//  load_stl("/home/ivan/Downloads/PumpkinsCombined.stl");
+//  load_stl("/home/ivan/lamp.stl");
+  load_stl("/home/ivan/cube.stl");
 //  load_stl("/home/ivan/Downloads/Homme135-140.stl");
+//  load_stl("/home/ivan/castle.stl");
+//  load_stl("/home/ivan/sphere.stl");
   gen2();
   build();
   printf("Tree size: %ld {%f %f %f} {%f %f %f}\n", kdtree.item.size(),

@@ -42,7 +42,7 @@ uniform Box bbox
 
 uniform Box room
 #ifndef NO_INIT
-= {vec3 (-6.0f, -9.0f, 0.0f ), vec3 (6.0f, 6.0f, 4.0f)}
+= {vec3 (-60.0f, -90.0f, 0.0f ), vec3 (60.0f, 60.0f, 40.0f)}
 #endif
 ;
 
