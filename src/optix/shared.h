@@ -7,7 +7,6 @@
 #define RT_FUNCTION __forceinline__ __device__
 #endif
 
-
 class vec3 {
   public:
   union {
@@ -24,3 +23,23 @@ class vec3 {
   };
 };
 
+struct tri_stl;
+
+struct tri {
+  vec3 vertex[3];
+  vec3 normal;
+  vec3 vertex_normal[3];
+  float inv_denom;
+
+  tri() = default;
+};
+
+class kd {
+ public:
+   kd() = default;
+   int split_axe;
+   float split_line;
+   int child[2];
+   // FIXME
+//   std::vector<int> boxes;
+};

@@ -41,8 +41,8 @@ struct tri_stl {
 };
 
 struct tri {
-  vec3 normal;
   vec3 vertex[3];
+  vec3 normal;
   vec3 vertex_normal[3];
   float inv_denom;
 
@@ -274,7 +274,8 @@ Hit2 Ray::traverse_recursive(int idx, float rmin, float rmax, bool front) const 
   return {-1, rmax};
 };
 
-const float ray_epsilon = 0;//0.000001;
+const float ray_epsilon = 1e-6;
+const float construction_epsilon = 0;//1e-5f;
 
 inline Hit2 Ray::traverse_nonrecursive(int idx, float rmin, float rmax, bool front) const {
   StackEntry stack[MAX_STACK];
@@ -407,6 +408,7 @@ int other_axe[3][2] = {
 };
 
 int build_tree(const AABB& bbox, const std::vector<Event>& events, int depth) {
+  float epsilon = std::max(ray_epsilon, construction_epsilon);
   assert(depth < MAX_STACK - 2);
   float size[3];
   float cut_surface[3];
@@ -428,7 +430,30 @@ int build_tree(const AABB& bbox, const std::vector<Event>& events, int depth) {
   }
 
   int best_axe = -1;
-  float split_cost = 5.0;  // versus triangle intersection
+  // Cost:
+  // 5.0: 14.40 FPS leafs: 847464
+  // 2.0: 18.21 FPS leafs: 4933040
+  // 1.0: 18.84 FPS leafs: 14184818
+  // 0.5: 18.83 FPS leafs: 22386241
+  //
+  // Split penalty:
+  // 2.0: 2x: 18.21 FPS leafs: 4933040 max: 105
+  // 2.0: 3x: 17.38 FPS leafs: 1410756 max: 111
+  // 1.0: 3x: 18.10 FPS leafs: 3143207
+  // 0.5: 4x: 16.79 FPS leafs: 1511573 max: 184
+  //
+  // New scene, epsilons
+  // 2.0, constr 0.00001, eps 0.00001  split 2: 9.51 FPS 4243642 leafs 105 max
+  // 3.0, constr 0.00001, eps 0.00001  split 2: 9.30 FPS 2086528 leafs 105 max
+  // 3.0, constr 0.00001, eps 0.       split 2: 9.55 FPS 2270260 leafs 105 max
+  // 3.0, ray    0.000001, eps 0.      split 2: 9.92 FPS 1535519 leafs 102 max
+  // 3.0, ray    0.00001, eps 0.       split 2: 9.92 FPS 1535519 leafs 102 max
+  // 3.0, ray    0.00001, eps 0.00001  split 2: 9.83 FPS 1489430 leafs 103 max
+  // 3.0, ray    1e-6,    eps 1e-6     split 2: 9.93 FPS 1517377 leafs 103 max
+  // 2.0, ray    1e-6,    eps 1e-6     split 2: 10.29 FPS 2894953 leafs 103 max
+  // 1.0, ray    1e-6,    eps 1e-6     split 2: 10.41 FPS 7016278 leafs 103 max
+  //
+  float split_cost = 2.0;  // versus triangle intersection
   float best_cost = 0.8 * events.size() / 6;
   float best_line = -1;
 //  printf("Events: %ld\n", events.size());
@@ -447,9 +472,9 @@ int build_tree(const AABB& bbox, const std::vector<Event>& events, int depth) {
       NP[axe]--;
     }
     if (line >= bbox.min[axe] && line <= bbox.max[axe]) {
-      float left_area = (line - bbox.min[axe] + ray_epsilon) / size[axe];
-      float right_area = (bbox.max[axe] - line + ray_epsilon) / size[axe];
-      float min_area = 10 * ray_epsilon / size[axe];
+      float left_area = (line - bbox.min[axe] + epsilon) / size[axe];
+      float right_area = (bbox.max[axe] - line + epsilon) / size[axe];
+      float min_area = 10 * epsilon / size[axe];
       float multiplier = NL[axe] == 0 || NR[axe] == 0 ? 0.8 : 1;
       float left_cost = split_cost + cut_surface[axe] * left_area * (NL[axe] + 2 * NP[axe]) * multiplier;
       float right_cost = split_cost + cut_surface[axe] * right_area * (NR[axe] + 2 * NP[axe]) * multiplier;
@@ -520,6 +545,10 @@ int build_tree(const AABB& bbox, const std::vector<Event>& events, int depth) {
 }
 
 void print_tree() {
+  size_t max_tris = 0;
+  size_t num_tri_refs = 0;
+  size_t num_leafs = 0;
+  std::vector<size_t> num_small_leafs = {0,0,0,0,0,0,0,0,0,0,0};
   printf("Tree: bbox: {%f %f %f} {%f %f %f}\n",
       kdtree.bbox.min.x,
       kdtree.bbox.min.y,
@@ -529,18 +558,33 @@ void print_tree() {
       kdtree.bbox.max.z);
   for (size_t i = 0; i < kdtree.item.size(); i++) {
     const kd& k = kdtree.item[i];
-    printf("%ld: axe=%d, line=%f, left=%d right=%d [", i, k.split_axe, k.split_line,
-        k.child[0], k.child[1]);
-    for (size_t j = 0; j < k.boxes.size(); j++) {
-      printf("%d,", k.boxes[j]);
+    max_tris = std::max(max_tris, k.boxes.size());
+    if (k.boxes.size() > 0) {
+      num_leafs++;
+      for (size_t j = 0; j < num_small_leafs.size(); j++) {
+        if (k.boxes.size() == j) num_small_leafs[j]++;
+      }
     }
-    printf("]\n");
+    num_tri_refs += k.boxes.size();
+
+//    printf("%ld: axe=%d, line=%f, left=%d right=%d [", i, k.split_axe, k.split_line,
+//        k.child[0], k.child[1]);
+//    for (size_t j = 0; j < k.boxes.size(); j++) {
+//      printf("%d,", k.boxes[j]);
+//    }
+//    printf("]\n");
   }
-  for (size_t i = 0; i < boxes.size(); i++) {
-    const auto& b = boxes[i];
-    printf("box %ld: {%f %f %f} {%f %f %f}\n", i,
-        b.min.x, b.min.y, b.min.z,
-         b.max.x, b.max.y, b.max.z);
+//  for (size_t i = 0; i < boxes.size(); i++) {
+//    const auto& b = boxes[i];
+//    printf("box %ld: {%f %f %f} {%f %f %f}\n", i,
+//        b.min.x, b.min.y, b.min.z,
+//         b.max.x, b.max.y, b.max.z);
+//  }
+  printf("Max tris in a tree node: %ld avg %0.1f num leafs: %ld\n",
+      max_tris, float(num_tri_refs) / num_leafs, num_leafs);
+  for (size_t i = 0; i < num_small_leafs.size(); i++) {
+    printf("Small leaf sz=%ld count %ld (%2.1f%%)\n",
+        i, num_small_leafs[i], num_small_leafs[i] * 100.f / num_leafs);
   }
 }
 
@@ -560,7 +604,7 @@ int build() {
   }
   std::sort(events.begin(), events.end());
   assert(build_tree(bbox, events, 0) == 0);
-//  print_tree();
+  print_tree();
   return 0;
 }
 
@@ -593,7 +637,7 @@ bool Ray::intersect(AABB box, float* tmin) const {
 }
 
 void gen2() {
-  float epsilon = 0.0001; //ray_epsilon;
+  float epsilon = construction_epsilon;
   for (tri t : tris) {
     AABB bbox;
     bbox.min = t.vertex[0] - vec3(epsilon);

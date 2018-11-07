@@ -6,8 +6,8 @@
 
 INPUT(vec3, sight_y, vec3(0,0,1))
 INPUT(vec3, sight_x, vec3(1,0,0))
-INPUT(vec3, viewer, vec3(0, -5.5, 1.5))
-INPUT(vec3, sight, normalize(vec3(0., 1, -0.1)))
+INPUT(vec3, viewer, vec3(1.050459, 11.223460, 1.5))
+INPUT(vec3, sight, normalize(vec3(-0.197584, -0.978872, 0.052626)))
 INPUT(vec3, absorption, vec3(0.17,0.17,0.53))
 INPUT(float, focused_distance, 3.1)
 INPUT(float, light_size, 3)

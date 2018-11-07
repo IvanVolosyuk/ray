@@ -360,6 +360,6 @@ void SoftwareRenderer::draw() {
 
 void SoftwareRenderer::reset_accumulate() {
   base_frame_ = frame_;
-//  printf("Origin {%f %f %f} dir {%f %f %f}\n", viewer.x, viewer.y, viewer.z, sight.x, sight.y, sight.z);
+  printf("Origin {%f %f %f} dir {%f %f %f}\n", viewer.x, viewer.y, viewer.z, sight.x, sight.y, sight.z);
 }
 
