@@ -29,11 +29,13 @@ std::unique_ptr<Renderer> SoftwareRenderer::Create(int window_width, int window_
   kdtree.item.clear();
 //  load_stl("/home/ivan/Downloads/DiamondCleaned2a.stl");
 //  load_stl("/home/ivan/Downloads/dinifix.stl");
+  load_stl("/home/ivan/all.stl");
+//  load_stl("/home/ivan/diamond.stl");
 //  load_stl("/home/ivan/Downloads/PumpkinsCombined.stl");
 //  load_stl("/home/ivan/lamp.stl");
-  load_stl("/home/ivan/cube.stl");
+//  load_stl("/home/ivan/cube.stl");
 //  load_stl("/home/ivan/Downloads/Homme135-140.stl");
-//  load_stl("/home/ivan/castle.stl");
+//  load_stl("/home/ivan/castle2.stl");
 //  load_stl("/home/ivan/sphere.stl");
   gen2();
   build();
@@ -223,6 +225,7 @@ void SoftwareRenderer::drawThread(int id) {
   double one_mul = brightness / nrays_;
 
   vec3 yray = sight - yoffset - xoffset;
+  bool t;
   for (int y = 0; y < window_height_; y++) {
     if (y % numCPU_ == id) {
       vec3 ray = yray;
@@ -236,7 +239,7 @@ void SoftwareRenderer::drawThread(int id) {
           vec3 me = viewer + sight_x * (r * cos(a)) + sight_y * (r * sin(a));
           vec3 new_ray = normalize(focused_point - me);
 
-          trace_values = x == 500 && y == 500;
+          t = trace_values = x == 240 && y == 135;
           auto res = trace_new(new_ray, me);
           // accumulate
           *my_fppixels += BasePoint<double>::convert(res);
@@ -245,10 +248,17 @@ void SoftwareRenderer::drawThread(int id) {
         total += res.x + res.y + res.z;
 
         vec3 saturated = saturateColor(res);
-        *my_pixels++ = colorToInt(saturated.z);
-        *my_pixels++ = colorToInt(saturated.y);
-        *my_pixels++ = colorToInt(saturated.x);
-        *my_pixels++ = 255;
+        if (t) {
+          *my_pixels++ = 0;
+          *my_pixels++ = 0;
+          *my_pixels++ = 255;
+          *my_pixels++ = 255;
+        } else {
+          *my_pixels++ = colorToInt(saturated.z);
+          *my_pixels++ = colorToInt(saturated.y);
+          *my_pixels++ = colorToInt(saturated.x);
+          *my_pixels++ = 255;
+        }
         ray += dx;
       }
     } else {

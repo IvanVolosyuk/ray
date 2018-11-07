@@ -155,10 +155,12 @@ bool Ray::triangle_intersect(
     float NdotRayDirection = dot(N, dir); 
 #ifdef CULLING 
     if (front ? NdotRayDirection > kEpsilon : NdotRayDirection < -kEpsilon) {
+      P(NdotRayDirection);
       return false;
     }
 #else
     if (fabs(NdotRayDirection) < kEpsilon) { // almost 0 
+      P(NdotRayDirection);
 //      printf("%f\n", NdotRayDirection);
         return false; // they are parallel so they don't intersect ! 
     }
@@ -167,7 +169,10 @@ bool Ray::triangle_intersect(
     // compute t (equation 3)
     *t = (dot(N, tr.vertex[0] - origin)) / NdotRayDirection; 
     // check if the triangle is in behind the ray
-    if (*t < 0) return false; // the triangle is behind 
+    if (*t < 0) {
+      P(*t);
+      return false; // the triangle is behind 
+    }
  
     // compute the intersection point using equation 1
     vec3 P = origin + dir * *t; 
@@ -179,23 +184,39 @@ bool Ray::triangle_intersect(
     vec3 edge0 = tr.vertex[1] - tr.vertex[0]; 
     vec3 vp0 = P - tr.vertex[0]; 
     C = cross(edge0, vp0); 
-    if (dot(N, C) < 0) return false; // P is on the right side 
+    if (dot(N, C) < 0) {
+      P(vp0);
+      P(edge0);
+      P(N);
+      return false; // P is on the right side 
+    }
  
     // edge 1
     vec3 edge1 = tr.vertex[2] - tr.vertex[1]; 
     vec3 vp1 = P - tr.vertex[1]; 
     C = cross(edge1, vp1); 
-    if ((*u = dot(N, C)) < 0)  return false; // P is on the right side 
+    if ((*u = dot(N, C)) < 0) {
+      P(vp1);
+      P(edge1);
+      P(N);
+      return false; // P is on the right side 
+    }
  
     // edge 2
     vec3 edge2 = tr.vertex[0] - tr.vertex[2]; 
     vec3 vp2 = P - tr.vertex[2]; 
     C = cross(edge2, vp2); 
-    if ((*v = dot(N, C)) < 0) return false; // P is on the right side; 
+    if ((*v = dot(N, C)) < 0) {
+      P(vp2);
+      P(edge2);
+      P(N);
+      return false; // P is on the right side; 
+    }
 
     *u *= tr.inv_denom;
     *v *= tr.inv_denom;
  
+    P(true);
     return true; // this ray hits the triangle 
 #endif 
 }
@@ -253,7 +274,7 @@ Hit2 Ray::traverse_recursive(int idx, float rmin, float rmax, bool front) const 
   return {-1, rmax};
 };
 
-float ray_epsilon = 0.000001;
+const float ray_epsilon = 0;//0.000001;
 
 inline Hit2 Ray::traverse_nonrecursive(int idx, float rmin, float rmax, bool front) const {
   StackEntry stack[MAX_STACK];
@@ -265,6 +286,7 @@ inline Hit2 Ray::traverse_nonrecursive(int idx, float rmin, float rmax, bool fro
   stack[stack_pos].idx = 0; // root
   stack[stack_pos].dist = rmax;
   stack_pos++;
+  P("Trace nonrecursive");
 
   // needs rmin, takes rmax from stack
   while (likely(stack_pos > 0)) {
@@ -276,11 +298,15 @@ inline Hit2 Ray::traverse_nonrecursive(int idx, float rmin, float rmax, bool fro
     while (true) {
       auto& item = kdtree.item[idx];
       int axe = item.split_axe;
+      P(idx);
+      P(rmin);
+      P(rmax);
+      P(axe);
 //      depth++;
 //      printf("Look into %d axe %d line %f rmin %f rmax %f\n",
 //          idx, axe, item.split_line, rmin, rmax);
       if (likely(axe == -1)) {
-        float dist = max_distance;
+        float dist = rmax + ray_epsilon;
         vec3 color(1);
         vec3 normal;
         int hit = -1;
@@ -290,8 +316,12 @@ inline Hit2 Ray::traverse_nonrecursive(int idx, float rmin, float rmax, bool fro
           nintersects++;
           float new_dist, u, v;
           const auto& t = tris[box_id];
+          P(box_id);
           if (likely(triangle_intersect(t, &new_dist, &u, &v, front))) {
-            if (new_dist < rmin) {
+            P(new_dist);
+            P(dist);
+            P(rmin);
+            if (new_dist < rmin - ray_epsilon) {
               continue;
             }
             // if (new_dist > rmax) {
@@ -309,6 +339,7 @@ inline Hit2 Ray::traverse_nonrecursive(int idx, float rmin, float rmax, bool fro
         if (unlikely(hit != -1)) {
           nhits++;
           // FIXME
+          P(hit);
           return {hit, dist, color, normal};
         }
         rmin = rmax - 2 * ray_epsilon;
@@ -320,20 +351,25 @@ inline Hit2 Ray::traverse_nonrecursive(int idx, float rmin, float rmax, bool fro
       // dist = (line - origin) * idir
       float dist = (line - origin[axe]) * idir[axe];
       int child_idx = idir[axe] < 0 ? 1 : 0;
+      P(idir[axe]);
+      P(child_idx);
 
       if (unlikely(dist < rmin - ray_epsilon)) {
         // push 1 rmin rmax
 //        stack[stack_pos].dist = rmax;
 //        stack[stack_pos++].idx = kdtree.item[idx].child[child_idx^1];
         idx = item.child[child_idx^1];
+        P("before");
 //        printf("dist %f < rmin %f : [%d] = %d (%f:%f)\n", dist, rmin, child_idx^1, idx, rmin, rmax);
       } else if (unlikely(dist > rmax + ray_epsilon)) {
         // push 0 rmin rmax
 //        stack[stack_pos].dist = rmax;
 //        stack[stack_pos++].idx = kdtree.item[idx].child[child_idx];
         idx = item.child[child_idx];
+        P("after");
 //        printf("dist %f > rmax %f : [%d] = %d (%f:%f)\n", dist, rmax, child_idx, idx, rmin, rmax);
       } else {
+        P("both");
 //      if (depth > max_depth & rmin > orig_rmin) {
 //        vec3 normal;
 //        normal[axe] = dir[axe] > 0 ? -1 : 1;
@@ -415,8 +451,8 @@ int build_tree(const AABB& bbox, const std::vector<Event>& events, int depth) {
       float right_area = (bbox.max[axe] - line + ray_epsilon) / size[axe];
       float min_area = 10 * ray_epsilon / size[axe];
       float multiplier = NL[axe] == 0 || NR[axe] == 0 ? 0.8 : 1;
-      float left_cost = split_cost + cut_surface[axe] * left_area * (NL[axe] + NP[axe]) * multiplier;
-      float right_cost = split_cost + cut_surface[axe] * right_area * (NR[axe] + NP[axe]) * multiplier;
+      float left_cost = split_cost + cut_surface[axe] * left_area * (NL[axe] + 2 * NP[axe]) * multiplier;
+      float right_cost = split_cost + cut_surface[axe] * right_area * (NR[axe] + 2 * NP[axe]) * multiplier;
       float cost = std::max(left_cost, right_cost);
       //    printf("Area %f %f NL %d NR %d NP %d cost %f\n",
       //        left_area, right_area, NL[axe], NR[axe], NP[axe], cost);
@@ -483,6 +519,31 @@ int build_tree(const AABB& bbox, const std::vector<Event>& events, int depth) {
   return res;
 }
 
+void print_tree() {
+  printf("Tree: bbox: {%f %f %f} {%f %f %f}\n",
+      kdtree.bbox.min.x,
+      kdtree.bbox.min.y,
+      kdtree.bbox.min.z,
+      kdtree.bbox.max.x,
+      kdtree.bbox.max.y,
+      kdtree.bbox.max.z);
+  for (size_t i = 0; i < kdtree.item.size(); i++) {
+    const kd& k = kdtree.item[i];
+    printf("%ld: axe=%d, line=%f, left=%d right=%d [", i, k.split_axe, k.split_line,
+        k.child[0], k.child[1]);
+    for (size_t j = 0; j < k.boxes.size(); j++) {
+      printf("%d,", k.boxes[j]);
+    }
+    printf("]\n");
+  }
+  for (size_t i = 0; i < boxes.size(); i++) {
+    const auto& b = boxes[i];
+    printf("box %ld: {%f %f %f} {%f %f %f}\n", i,
+        b.min.x, b.min.y, b.min.z,
+         b.max.x, b.max.y, b.max.z);
+  }
+}
+
 int build() {
   AABB bbox = boxes[0];
   for (size_t i = 1; i < boxes.size(); i++) {
@@ -499,6 +560,7 @@ int build() {
   }
   std::sort(events.begin(), events.end());
   assert(build_tree(bbox, events, 0) == 0);
+//  print_tree();
   return 0;
 }
 
@@ -531,7 +593,7 @@ bool Ray::intersect(AABB box, float* tmin) const {
 }
 
 void gen2() {
-  float epsilon = 0; //ray_epsilon;
+  float epsilon = 0.0001; //ray_epsilon;
   for (tri t : tris) {
     AABB bbox;
     bbox.min = t.vertex[0] - vec3(epsilon);
@@ -728,7 +790,7 @@ void load_stl(const char* path) {
       std::vector<vec3>& normals = refs[std::make_tuple(t.vertex[v].x, t.vertex[v].y, t.vertex[v].z)];
       vec3 res;
       for (const vec3& n : normals) {
-        if (dot(t.normal, normalize(n)) > 0.20) {
+        if (dot(t.normal, normalize(n)) > 0.50) {
           res += n;
         }
       }

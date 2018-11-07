@@ -401,6 +401,7 @@ void make_reflection(
 void triangle_trace (
     REF(RayData) ray,
     in Hit2 p) {
+  trace_values = false;
 //  vec3 normal = tris[p.id].normal;
   ray.origin = ray.origin + ray.norm_ray * p.distance;
   vec3 normal = p.normal;// hack for sphere normalize(ray.origin);
@@ -422,7 +423,7 @@ void triangle_trace (
     ray.norm_ray = refract(diamond_refraction_index, normal, ray.norm_ray);
 
     for (int i = 0; i < 300; i++) {
-      Hit2 hit = bbox_hit(ray.norm_ray, ray.origin, 0.0001, max_distance, false);
+      Hit2 hit = bbox_hit(ray.norm_ray, ray.origin, 0, max_distance, false);
       if (hit.id == -1) {
         ray.intensity = vec3(1, 0, 0);
 //        printf("No hit %d\n", i);
