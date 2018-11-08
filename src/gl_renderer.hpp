@@ -56,4 +56,8 @@ class OpenglRenderer : public Renderer {
   optix::Variable denoiseBlend_;
   optix::Variable exposure_;
   optix::Variable gamma_;
+
+  optix::Buffer tree_buffer;
+  optix::Buffer tri_buffer;
+  optix::Buffer tri_lists_buffer;
 };

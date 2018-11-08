@@ -23,10 +23,13 @@ void print(const char*, const char* v) {
 
 #include "shader/shader.hpp"
 
-std::unique_ptr<Renderer> SoftwareRenderer::Create(int window_width, int window_height) {
+void init_scene() {
   tris.clear();
   boxes.clear();
+  tri_lists.clear();
+  tri_lists.push_back({});
   kdtree.item.clear();
+
 //  load_stl("/home/ivan/Downloads/DiamondCleaned2a.stl");
 //  load_stl("/home/ivan/Downloads/dinifix.stl");
   load_stl("/home/ivan/all.stl");
@@ -47,6 +50,10 @@ std::unique_ptr<Renderer> SoftwareRenderer::Create(int window_width, int window_
 
   printf("Boxes %ld Hits %ld Intersects %ld Traverses %ld Traverses per ray %f\n",
       boxes.size(), nhits, nintersects, ntraverses, ntraverses / (float)ntests);
+}
+
+std::unique_ptr<Renderer> SoftwareRenderer::Create(int window_width, int window_height) {
+  init_scene();
 
   std::unique_ptr<SoftwareRenderer> r(new SoftwareRenderer());
   r->window_width_ = window_width;
@@ -225,7 +232,6 @@ void SoftwareRenderer::drawThread(int id) {
   double one_mul = brightness / nrays_;
 
   vec3 yray = sight - yoffset - xoffset;
-  bool t;
   for (int y = 0; y < window_height_; y++) {
     if (y % numCPU_ == id) {
       vec3 ray = yray;
@@ -239,7 +245,6 @@ void SoftwareRenderer::drawThread(int id) {
           vec3 me = viewer + sight_x * (r * cos(a)) + sight_y * (r * sin(a));
           vec3 new_ray = normalize(focused_point - me);
 
-          t = trace_values = x == 240 && y == 135;
           auto res = trace_new(new_ray, me);
           // accumulate
           *my_fppixels += BasePoint<double>::convert(res);
@@ -248,17 +253,10 @@ void SoftwareRenderer::drawThread(int id) {
         total += res.x + res.y + res.z;
 
         vec3 saturated = saturateColor(res);
-        if (t) {
-          *my_pixels++ = 0;
-          *my_pixels++ = 0;
-          *my_pixels++ = 255;
-          *my_pixels++ = 255;
-        } else {
-          *my_pixels++ = colorToInt(saturated.z);
-          *my_pixels++ = colorToInt(saturated.y);
-          *my_pixels++ = colorToInt(saturated.x);
-          *my_pixels++ = 255;
-        }
+        *my_pixels++ = colorToInt(saturated.z);
+        *my_pixels++ = colorToInt(saturated.y);
+        *my_pixels++ = colorToInt(saturated.x);
+        *my_pixels++ = 255;
         ray += dx;
       }
     } else {
@@ -360,6 +358,6 @@ void SoftwareRenderer::draw() {
 
 void SoftwareRenderer::reset_accumulate() {
   base_frame_ = frame_;
-  printf("Origin {%f %f %f} dir {%f %f %f}\n", viewer.x, viewer.y, viewer.z, sight.x, sight.y, sight.z);
+//  printf("Origin {%f %f %f} dir {%f %f %f}\n", viewer.x, viewer.y, viewer.z, sight.x, sight.y, sight.z);
 }
 

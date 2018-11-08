@@ -10,6 +10,42 @@
 using namespace optix;
 using namespace std;
 
+
+struct Hit2 {
+  int id;
+  float distance;
+  vec3 normal;
+};
+
+
+struct MyRay {
+  vec3 origin;
+  vec3 idir; // inverted direction
+  vec3 dir;  // direction
+  RT_FUNCTION
+  Hit2 traverse_nonrecursive(int idx, float rmin, float rmax, bool front) const;
+  RT_FUNCTION
+  void intersect(AABB box, float& tmin, float& tmax) const;
+  RT_FUNCTION
+  bool triangle_intersect(const tri& tr, float* t, float* u, float* v, bool front) const;
+  RT_FUNCTION
+  static MyRay make(vec3 origin, vec3 dir) {
+    vec3 idir { 1.f/dir.x, 1.f/dir.y, 1.f/dir.z};
+    if (!isfinite(idir.x) || idir.x > 1e10 || idir.x < -1e10) idir.x = 1e10;
+    if (!isfinite(idir.y) || idir.y > 1e10 || idir.y < -1e10) idir.y = 1e10;
+    if (!isfinite(idir.z) || idir.z > 1e10 || idir.z < -1e10) idir.z = 1e10;
+
+    return MyRay { origin, idir, dir };
+  }
+};
+
+struct StackEntry {
+  int idx;
+  float dist;
+};
+
+#define MAX_STACK 100
+
 rtBuffer<float4, 2> sysOutputBuffer; // RGBA32F
 rtBuffer<float4, 2> sysAlbedoBuffer; // RGBA32F
 rtBuffer<float4, 2> sysOutNormalBuffer;
@@ -51,6 +87,13 @@ rtDeclareVariable(float, sysAntialising, , );
 rtDeclareVariable(float2, sysRippleLow, , );
 rtDeclareVariable(float2, sysRippleHigh, , );
 
+const float diamond_refraction_index = 2.417;
+
+rtDeclareVariable(AABB, sysTreeBBox, , );
+rtBuffer<kd, 1> sysTree;
+rtBuffer<tri, 1> sysTris;
+rtBuffer<int, 1> sysTriLists;
+
 //rtDeclareVariable(optix::Ray, theRay, rtCurrentRay, );
 
 
@@ -66,12 +109,11 @@ struct Material {
   float specular_exponent_;
 };
 
+// FIXME: duplication
 struct Box {
   float3 a_;
   float3 b_;
 };
-
-
 
 struct Ball {
   float3 position_;
@@ -93,9 +135,9 @@ rtDeclareVariable(Box, room, ,);
 __device__
 const float fov = 0.7;
 __device__
-const float light_power = 50.4f;
+const float light_power = 5500.4f;
 __device__
-const float3 light_pos {5.0, -8, 3.0};
+const float3 light_pos {70.0, 20, 100};
 __device__
 const float3 light_color {light_power, light_power, light_power};
 
@@ -118,6 +160,9 @@ __device__
 const float max_distance = 1000;
 __device__
 const Hit no_hit = Hit{-1, max_distance, 0};
+
+
+
 
 
 template<int N>
@@ -212,6 +257,260 @@ float reflect_gen(uint& seed) {
   return rand1(seed);
 }
 
+
+RT_FUNCTION
+void MyRay::intersect(AABB box, float& tmin, float& tmax) const {
+  // lb is the corner of AABB with minimal coordinates - left bottom, rt is maximal corner
+  // r.org is origin of ray
+  float t1 = (box.min[0] - origin[0]) * idir[0];
+  float t2 = (box.max[0] - origin[0]) * idir[0];
+  float t3 = (box.min[1] - origin[1]) * idir[1];
+  float t4 = (box.max[1] - origin[1]) * idir[1];
+  float t5 = (box.min[2] - origin[2]) * idir[2];
+  float t6 = (box.max[2] - origin[2]) * idir[2];
+//  printf("{%f %f %f} {%f %f %f}\n", box.min[0], box.min[1], box.min[2], box.max[0], box.max[1], box.max[2]);
+//  printf("%f %f %f %f %f %f\n", t1, t2, t3, t4, t5, t6);
+
+  tmin = max(max(min(t1, t2), min(t3, t4)), min(t5, t6));
+  tmax = min(min(max(t1, t2), max(t3, t4)), max(t5, t6));
+}
+
+RT_FUNCTION
+bool MyRay::triangle_intersect( 
+    const tri& tr, 
+    float* t, float* u, float* v, bool front) const {
+  const float kEpsilon = 1e-10;
+//  printf("[0]{%f %f %f}, [1]{%f %f %f}, [2]{%f %f %f}\norigin {%f %f %f} dir {%f %f %f}\n",
+//      tr.vertex[0].x, tr.vertex[0].y, tr.vertex[0].z,
+//      tr.vertex[1].x, tr.vertex[1].y, tr.vertex[1].z,
+//      tr.vertex[2].x, tr.vertex[2].y, tr.vertex[2].z,
+//      origin.x, origin.y, origin.z,
+//      dir.x, dir.y, dir.z);
+
+#define CULLING
+//#define MOLLER_TRUMBORE
+#ifdef MOLLER_TRUMBORE 
+    vec3 v0v1 = tr.vertex[1] - tr.vertex[0]; 
+    vec3 v0v2 = tr.vertex[2] - tr.vertex[0]; 
+    vec3 pvec = cross(dir, v0v2); 
+    float det = dot(v0v1, pvec); 
+#ifdef CULLING 
+    // if the determinant is negative the triangle is backfacing
+    // if the determinant is close to 0, the ray misses the triangle
+    if (det < kEpsilon) return false; 
+#else 
+    // ray and triangle are parallel if det is close to 0
+    if (fabs(det) < kEpsilon) return false; 
+#endif 
+    float invDet = 1 / det; 
+ 
+    vec3 tvec = origin - tr.vertex[0]; 
+    *u = dot(tvec, pvec) * invDet; 
+    if (*u < 0 || *u > 1) return false; 
+ 
+    vec3 qvec = cross(tvec, v0v1); 
+    *v = dot(dir, qvec) * invDet; 
+    if (*v < 0 || *u + *v > 1) return false; 
+ 
+    *t = dot(v0v2, qvec) * invDet; 
+ 
+    return true; 
+#else 
+    vec3 N = tr.normal;
+ 
+    // Step 1: finding P
+ 
+    // check if ray and plane are parallel ?
+    float NdotRayDirection = dot(N, dir); 
+#ifdef CULLING 
+    if (front ? NdotRayDirection > kEpsilon : NdotRayDirection < -kEpsilon) {
+      P(NdotRayDirection);
+      return false;
+    }
+#else
+    if (fabs(NdotRayDirection) < kEpsilon) { // almost 0 
+      P(NdotRayDirection);
+//      printf("%f\n", NdotRayDirection);
+        return false; // they are parallel so they don't intersect ! 
+    }
+#endif
+ 
+    // compute t (equation 3)
+    *t = (dot(N, tr.vertex[0] - origin)) / NdotRayDirection; 
+    // check if the triangle is in behind the ray
+    if (*t < 0) {
+      P(*t);
+      return false; // the triangle is behind 
+    }
+ 
+    // compute the intersection point using equation 1
+    vec3 P = origin + dir * *t; 
+ 
+    // Step 2: inside-outside test
+    vec3 C; // vector perpendicular to triangle's plane 
+ 
+    // edge 0
+    vec3 edge0 = tr.vertex[1] - tr.vertex[0]; 
+    vec3 vp0 = P - tr.vertex[0]; 
+    C = cross(edge0, vp0); 
+    if (dot(N, C) < 0) {
+      P(vp0);
+      P(edge0);
+      P(N);
+      return false; // P is on the right side 
+    }
+ 
+    // edge 1
+    vec3 edge1 = tr.vertex[2] - tr.vertex[1]; 
+    vec3 vp1 = P - tr.vertex[1]; 
+    C = cross(edge1, vp1); 
+    if ((*u = dot(N, C)) < 0) {
+      P(vp1);
+      P(edge1);
+      P(N);
+      return false; // P is on the right side 
+    }
+ 
+    // edge 2
+    vec3 edge2 = tr.vertex[0] - tr.vertex[2]; 
+    vec3 vp2 = P - tr.vertex[2]; 
+    C = cross(edge2, vp2); 
+    if ((*v = dot(N, C)) < 0) {
+      P(vp2);
+      P(edge2);
+      P(N);
+      return false; // P is on the right side; 
+    }
+
+    *u *= tr.inv_denom;
+    *v *= tr.inv_denom;
+ 
+    P(true);
+    return true; // this ray hits the triangle 
+#endif 
+}
+
+const float ray_epsilon = 1e-6;
+//const float construction_epsilon = 0;//1e-5f;
+
+RT_FUNCTION
+Hit2 MyRay::traverse_nonrecursive(int idx, float rmin, float rmax, bool front) const {
+  StackEntry stack[MAX_STACK];
+//  int max_depth = reflect_gen(SW(gen)) * 10;
+//  float orig_rmin = rmin;
+//  int depth = 0;
+  // TODO: Clamp rmin, rmax
+  int stack_pos = 0;
+  stack[stack_pos].idx = 0; // root
+  stack[stack_pos].dist = rmax;
+  stack_pos++;
+  P("Trace nonrecursive");
+
+  // needs rmin, takes rmax from stack
+  while (likely(stack_pos > 0)) {
+//    assert(stack_pos < MAX_STACK);
+    stack_pos--;
+    rmax = stack[stack_pos].dist;
+    idx = stack[stack_pos].idx;
+
+    while (true) {
+      kd item = sysTree[idx];
+      int axe = item.split_axe;
+      P(idx);
+      P(rmin);
+      P(rmax);
+      P(axe);
+//      depth++;
+//      printf("Look into %d axe %d line %f rmin %f rmax %f\n",
+//          idx, axe, item.split_line, rmin, rmax);
+      if (likely(axe == -1)) {
+        float dist = rmax + ray_epsilon;
+        int hit = -1;
+        float hit_u, hit_v;
+        int pos;
+        int* it;
+
+//        for (int box_id : item.tri) {
+//          if (box_id == 0) goto done;
+//          float new_dist, u, v;
+//          const auto& t = sysTris[box_id];
+//          if (likely(triangle_intersect(t, &new_dist, &u, &v, front))) {
+//            if (new_dist < rmin - ray_epsilon) {
+//              continue;
+//            }
+//            if (new_dist <= dist) {
+//              dist = new_dist;
+//              hit = box_id;
+//              hit_u = u;
+//              hit_v = v;
+//            }
+//          }
+//        }
+
+        pos = item.tri_list_pos;
+//        if (pos == 0) goto done;
+        it = &sysTriLists[pos];
+
+        while (true) {
+          int box_id = *it++;
+          if (box_id == 0) goto done;
+          float new_dist, u, v;
+          const auto& t = sysTris[box_id];
+          if (likely(triangle_intersect(t, &new_dist, &u, &v, front))) {
+            if (new_dist < rmin - ray_epsilon) {
+              continue;
+            }
+            if (new_dist <= dist) {
+              dist = new_dist;
+              hit = box_id;
+              hit_u = u;
+              hit_v = v;
+            }
+          }
+        }
+done:
+        if (unlikely(hit != -1)) {
+          const auto& t = sysTris[hit];
+          vec3 normal = normalize(
+              t.vertex_normal[0] * hit_u
+              + t.vertex_normal[1] * hit_v
+              + t.vertex_normal[2] * (1-hit_u-hit_v));
+          return {hit, dist, normal};
+        }
+        rmin = rmax - 2 * ray_epsilon;
+        break;
+      }
+      float line = item.split_line;
+
+      // line = origin + dir * dist
+      // dist = (line - origin) * idir
+      float dist = (line - origin[axe]) * idir[axe];
+      int child_idx = idir[axe] < 0 ? 1 : 0;
+      P(idir[axe]);
+      P(child_idx);
+
+      if (unlikely(dist < rmin - ray_epsilon)) {
+        // push 1 rmin rmax
+        idx = item.child[child_idx^1];
+        P("before");
+      } else if (unlikely(dist > rmax + ray_epsilon)) {
+        // push 0 rmin rmax
+        idx = item.child[child_idx];
+        P("after");
+      } else {
+        P("both");
+        // push 1 dist rmax
+        stack[stack_pos].dist = rmax;
+        stack[stack_pos++].idx = item.child[child_idx^1];
+        // push 0 rmin dist
+        rmax = dist + ray_epsilon;
+        idx = item.child[child_idx];
+      }
+    }
+  }
+  return {-1, max_distance};
+};
+
 //float OBJECT_REFLECTIVITY = 0;
 
 // https://www.scratchapixel.com/lessons/3d-basic-rendering/introduction-to-shading/reflection-refraction-fresnel
@@ -269,7 +568,9 @@ Hit ball_hit(const int id, const float3 norm_ray, const float3 origin) {
 }
 
 RT_FUNCTION
-Hit bbox_hit(const float3 norm_ray, const float3 origin) {
+Hit2 bbox_hit(const float3 norm_ray, const float3 origin,
+    float rmin, float rmax, bool front) {
+#if 0
   float3 tMin = (bbox.a_ - origin) / norm_ray;
   float3 tMax = (bbox.b_ - origin) / norm_ray;
   float3 t1 = make_float3(
@@ -293,6 +594,16 @@ Hit bbox_hit(const float3 norm_ray, const float3 origin) {
     }
   }
   return hit;
+#endif
+  MyRay r = MyRay::make(origin, norm_ray);
+  float bmin, bmax;
+  r.intersect(sysTreeBBox, bmin, bmax);
+  float tmin = max(rmin, bmin);
+  float tmax = min(bmax, rmax);
+  if (tmin > tmax) {
+    return {-1, max_distance};
+  }
+  return r.traverse_nonrecursive(0, tmin, tmax, front);
 }
 
 RT_FUNCTION
@@ -492,6 +803,19 @@ RoomHit room_hit(uint& seed, const float3 norm_ray, const float3 origin) {
       u, v, min_dist, tex##_specular_exponent, tex##_diffuse_ammount); \
 }
 
+#if 1
+  if (t2.y < t2.z || t2.x < t2.z || norm_ray.z > 0) {
+    return RoomHit{max_distance};
+
+  } else {
+    min_dist = t2.z;
+    normal = vec3(0, 0, sign(-norm_ray.z));
+    U = float3{1, 0, 0};
+    V = float3{0, 1, 0};
+    FINISH(floor, intersection.x * 0.2f, intersection.y * 0.2f);
+  }
+
+#else
   if (t2.y < t2.z) {
     if (t2.x < t2.y) {
       min_dist = t2.x;
@@ -566,6 +890,7 @@ RoomHit room_hit(uint& seed, const float3 norm_ray, const float3 origin) {
       }
     }
   }
+#endif
 }
 
 RT_FUNCTION
@@ -670,7 +995,7 @@ void compute_light(
   }
 
   if ((ray.flags & FLAG_NO_SECONDARY) == 0) {
-    ray.light_multiplier *= 1 - m.diffuse_ammount_;
+    ray.light_multiplier = 0;
     float3 light_rnd_pos = light_pos + light_distr(ray.seed);
 
     float3 light_from_point = light_rnd_pos - ray.origin;
@@ -682,14 +1007,22 @@ void compute_light(
       float light_distance = 1.f/light_distance_inv;
       float3 light_from_point_norm = light_from_point * light_distance_inv;
 
-      Hit hit = bbox_hit(light_from_point_norm, ray.origin);
+      Hit2 hit = bbox_hit(light_from_point_norm, ray.origin, 0, light_distance, true);
 
-      if (hit.closest_point_distance_from_viewer_ > light_distance) {
+      if (hit.distance > light_distance) {
+        float a = dot(ray.norm_ray, light_from_point_norm);
+        float specular = 0;
+        if (a > 0) {
+          // Clamp
+          a = min(a, 1.f);
+          specular = powf(a, m.specular_exponent_);
+        }
         float angle = angle_x_distance * light_distance_inv;
 
         float3 reflected_light = (color * light_color) * m.diffuse_ammount_ * sysLightSize2;
         float diffuse_attenuation = cos_a / M_PI;
-        ray.intensity += reflected_light * ray.color_filter * (diffuse_attenuation * angle / (M_PI* (light_distance2 + 1e-12f)));
+        ray.intensity += reflected_light * ray.color_filter * (diffuse_attenuation * angle / (M_PI* (light_distance2 + 1e-12f)))
+          + (color * light_color) * ray.color_filter * (specular * (1 - m.diffuse_ammount_) / m.specular_exponent_);
       }
     }
   }
@@ -743,9 +1076,61 @@ void light_trace_new(
 }
 
 RT_FUNCTION
+void triangle_trace (
+    REF(RayData) ray,
+    const Hit2 p) {
+//  vec3 normal = tris[p.id].normal;
+  ray.origin = ray.origin + ray.norm_ray * p.distance;
+  vec3 normal = p.normal;// hack for sphere normalize(ray.origin);
+  float cos_a = -dot(ray.norm_ray, normal);
+
+  Material m {0.95, 100};
+  
+  if (true || reflect_gen(ray.seed) < fresnel(diamond_refraction_index, normal, ray.norm_ray)) {
+    ray.norm_ray = ray.norm_ray - normal * (2 * dot(ray.norm_ray, normal));
+    compute_light(ray, cos_a, make_float3(1), make_float3(1), m, normal);
+  } else {
+//    float start_distance = ray.distance_from_eye;
+    ray.norm_ray = refract(diamond_refraction_index, normal, ray.norm_ray);
+
+    for (int i = 0; i < 300; i++) {
+      Hit2 hit = bbox_hit(ray.norm_ray, ray.origin, 0, max_distance, false);
+      if (hit.id == -1) {
+        ray.intensity = vec3(1, 0, 0);
+//        printf("No hit %d\n", i);
+        ray.flags |= FLAG_TERMINATE;
+        ray.color_filter = vec3(3, 0, 0);
+        return;
+      }
+//      printf("  hit %d %f\n", i, hit.distance);
+      normal = hit.normal;
+      ray.origin = ray.origin + ray.norm_ray * hit.distance;
+
+      if (reflect_gen(ray.seed) < fresnel(diamond_refraction_index, normal, ray.norm_ray)) {
+        ray.norm_ray = ray.norm_ray - normal * (2 * dot(ray.norm_ray, normal));
+      } else {
+        ray.norm_ray = refract(diamond_refraction_index, normal, ray.norm_ray);
+        float cos_a = -dot(ray.norm_ray, normal);
+        compute_light(ray, cos_a, make_float3(1), make_float3(1), m, normal);
+        break;
+      }
+    }
+//    float td = ray.distance_from_eye - start_distance; // travel distance
+//    vec3 extinction = vec3(expf(-absorption.x * td), expf(-absorption.y * td), expf(-absorption.z * td));
+//    ray.color_filter = ray.color_filter * extinction;
+  }
+}
+
+
+RT_FUNCTION
 void room_trace(
     REF(RayData) ray) {
   RoomHit p = room_hit(ray.seed, ray.norm_ray, ray.origin);
+  if (p.min_dist == max_distance) {
+    ray.intensity = ray.color_filter * vec3(0.02, 0.02, 0.2);
+    ray.flags |= FLAG_TERMINATE;
+    return;
+  }
   ray.origin = p.intersection;
   float cos_a = -dot(ray.norm_ray, p.normal);
   ray.norm_ray = p.reflection;
@@ -854,21 +1239,21 @@ void trace (RayData& ray) {
 
   int depth = 0;
   while (true) {
-    Hit hit = bbox_hit(ray.norm_ray, ray.origin);
+    Hit2 hit = bbox_hit(ray.norm_ray, ray.origin, 0, max_distance, true);
 
     Hit light = light_hit(ray.norm_ray, ray.origin);
     if (light.closest_point_distance_from_viewer_ <
-        hit.closest_point_distance_from_viewer_) {
+        hit.distance) {
       light_trace_new(light, ray);
       return;
     }
 
     if (depth == sysMaxDepth - 1) ray.flags |= FLAG_TERMINATE;
 
-    if (hit.id_ < 0) {
+    if (hit.id < 0) {
       room_trace(ray);
     } else {
-      ball_trace(ray, hit);
+      triangle_trace(ray, hit);
     }
     if ((ray.flags & FLAG_TERMINATE) != 0) return;
 

@@ -1,16 +1,11 @@
-//#include <stdio.h>
-//#include <vector>
-//#include <cstdlib>
-//#include <memory>
-//#include <algorithm>
-//#include <assert.h>
-//#include <math.h>
-#include "common.hpp"
 #include <map>
 
-#define AXE_X 0
-#define AXE_Y 1
-#define AXE_Z 2
+#include "common.hpp"
+#include "kd_types.hpp"
+
+#ifndef P
+#define P(x) {}
+#endif
 
 //class vec3 {
 //  public:
@@ -23,52 +18,17 @@
 //    float v[3];
 //};
 
-struct AABB {
-  vec3 min;
-  vec3 max;
-  AABB combine(const AABB& x) {
-    auto X = [&](int i) { return std::min(min[i], x.min[i]); };
-    auto Y = [&](int i) { return std::max(max[i], x.max[i]); };
-    return AABB{{X(0), X(1), X(2)}, {Y(0), Y(1), Y(2)}};
-  }
-};
+// Reserve 0 element
+std::vector<AABB> boxes = { {} };
 
-std::vector<AABB> boxes;
+// Reserve 0 element
+std::vector<tri> tris { {} };
 
-struct tri_stl {
-  vec3 normal;
-  vec3 vertex[3];
-};
+// Reserve 0 element
+std::vector<int> tri_lists = { {} };
 
-struct tri {
-  vec3 vertex[3];
-  vec3 normal;
-  vec3 vertex_normal[3];
-  float inv_denom;
 
-  tri() {}
-  tri(tri_stl inp) {
-    normal = inp.normal;
-    vertex[0] = inp.vertex[0];
-    vertex[1] = inp.vertex[1];
-    vertex[2] = inp.vertex[2];
-  }
-};
-
-std::vector<tri> tris;
-
-class kd {
- public:
-  int split_axe;
-  float split_line;
-  int child[2];
-  std::vector<int> boxes;
-};
-
-struct kdtree {
-  AABB bbox;
-  std::vector<kd> item;
-} kdtree;
+struct kdtree kdtree;
 
 struct Hit2 {
   int id;
@@ -80,7 +40,6 @@ struct Hit2 {
 
 struct Ray {
   vec3 origin;
-//  float dir[3];  // direction
   vec3 idir; // inverted direction
   vec3 dir;  // direction
   Hit2 traverse_recursive(int idx, float rmin, float rmax, bool front) const;
@@ -108,9 +67,10 @@ int64_t nhits = 0;
 int64_t ntraverses = 0;
 int64_t nintersects = 0;
 
-bool Ray::triangle_intersect( 
+inline bool Ray::triangle_intersect( 
     const tri& tr, 
-    float* t, float* u, float* v, bool front) const { 
+    float* t, float* u, float* v, bool front) const {
+  float kEpsilon = 1e-10;
 //  printf("[0]{%f %f %f}, [1]{%f %f %f}, [2]{%f %f %f}\norigin {%f %f %f} dir {%f %f %f}\n",
 //      tr.vertex[0].x, tr.vertex[0].y, tr.vertex[0].z,
 //      tr.vertex[1].x, tr.vertex[1].y, tr.vertex[1].z,
@@ -224,7 +184,7 @@ bool Ray::triangle_intersect(
 #define likely(x) __builtin_expect((x),1)
 #define unlikely(x) __builtin_expect((x),0)
 
-Hit2 Ray::traverse_recursive(int idx, float rmin, float rmax, bool front) const {
+inline Hit2 Ray::traverse_recursive(int idx, float rmin, float rmax, bool front) const {
   ntraverses++;
   //printf("%d min %f max %f\n", idx, rmin, rmax);
   int axe = kdtree.item[idx].split_axe;
@@ -233,7 +193,8 @@ Hit2 Ray::traverse_recursive(int idx, float rmin, float rmax, bool front) const 
     vec3 color;
     int hit = -1;
     //printf("node boxes: %d %ld\n", kdtree.item[idx].child[0], kdtree.item[idx].boxes.size());
-    for (auto& box_id : kdtree.item[idx].boxes) {
+    // FIXME: broken
+    for (auto& box_id : kdtree.item[idx].tri) {
       nintersects++;
 //      printf("** %d", box_id);
       float new_dist, u, v;
@@ -308,40 +269,57 @@ inline Hit2 Ray::traverse_nonrecursive(int idx, float rmin, float rmax, bool fro
 //          idx, axe, item.split_line, rmin, rmax);
       if (likely(axe == -1)) {
         float dist = rmax + ray_epsilon;
-        vec3 color(1);
-        vec3 normal;
         int hit = -1;
-//        printf("List of candidates: %ld\n", item.boxes.size());
-        for (auto& box_id : item.boxes) {
-//          printf("Candidate: %d\n", box_id);
-          nintersects++;
+        float hit_u, hit_v;
+        int pos;
+        int* it;
+
+        for (int box_id : item.tri) {
+          if (box_id == 0) goto done;
           float new_dist, u, v;
           const auto& t = tris[box_id];
-          P(box_id);
           if (likely(triangle_intersect(t, &new_dist, &u, &v, front))) {
-            P(new_dist);
-            P(dist);
-            P(rmin);
             if (new_dist < rmin - ray_epsilon) {
               continue;
             }
-            // if (new_dist > rmax) {
-            //   if (!front) printf("Skip too far %f %f \n", new_dist, rmax);
-            // }
             if (new_dist <= dist) {
               dist = new_dist;
               hit = box_id;
-              //              color = vec3(u, v, 1-u-v);
-              // FIXME: compute only for result
-              normal = normalize(t.vertex_normal[0] * u + t.vertex_normal[1] * v + t.vertex_normal[2] * (1-u-v));
+              hit_u = u;
+              hit_v = v;
             }
           }
         }
+
+        pos = item.tri_list_pos;
+        if (pos == 0) goto done;
+        it = &tri_lists[pos];
+
+        while (true) {
+          int box_id = *it++;
+          if (box_id == 0) goto done;
+          float new_dist, u, v;
+          const auto& t = tris[box_id];
+          if (likely(triangle_intersect(t, &new_dist, &u, &v, front))) {
+            if (new_dist < rmin - ray_epsilon) {
+              continue;
+            }
+            if (new_dist <= dist) {
+              dist = new_dist;
+              hit = box_id;
+              hit_u = u;
+              hit_v = v;
+            }
+          }
+        }
+done:
         if (unlikely(hit != -1)) {
-          nhits++;
-          // FIXME
-          P(hit);
-          return {hit, dist, color, normal};
+          const auto& t = tris[hit];
+          vec3 normal = normalize(
+              t.vertex_normal[0] * hit_u
+              + t.vertex_normal[1] * hit_v
+              + t.vertex_normal[2] * (1-hit_u-hit_v));
+          return {hit, dist, vec3(1), normal};
         }
         rmin = rmax - 2 * ray_epsilon;
         break;
@@ -453,6 +431,11 @@ int build_tree(const AABB& bbox, const std::vector<Event>& events, int depth) {
   // 2.0, ray    1e-6,    eps 1e-6     split 2: 10.29 FPS 2894953 leafs 103 max
   // 1.0, ray    1e-6,    eps 1e-6     split 2: 10.41 FPS 7016278 leafs 103 max
   //
+  // Lists MAX_EMBEDDED:
+  //  size 6: 12.19 FPS
+  //  size 2: 12.44 FPS
+  //  size 0: 12.34 FPS
+  //
   float split_cost = 2.0;  // versus triangle intersection
   float best_cost = 0.8 * events.size() / 6;
   float best_line = -1;
@@ -499,14 +482,29 @@ int build_tree(const AABB& bbox, const std::vector<Event>& events, int depth) {
 //  printf("Best line: %f axe: %d cost: %f\n", best_line, best_axe, best_cost);
   if (best_axe == -1) {
     // No split
-    kd leaf {-1, 0, {(int)events.size(),-1}};
+    kd leaf {-1};
+    for (int i = 0; i < MAX_EMBEDDED; i++) leaf.tri[i] = 0;
+    leaf.tri_list_pos = 0;
+
+    int num_children = 0;
     for (const Event& e : events) {
       int axe = std::get<3>(e);
       int incr = std::get<1>(e);
       int box_idx = std::get<2>(e);
       if (axe == 0 && incr == -1) {
-        leaf.boxes.push_back(box_idx);
+        if (num_children < MAX_EMBEDDED) {
+          leaf.tri[num_children++] = box_idx;
+          continue;
+        }
+        if (num_children == MAX_EMBEDDED) {
+          leaf.tri_list_pos = tri_lists.size();
+        }
+        tri_lists.push_back(box_idx);
+        num_children++;
       }
+    }
+    if (num_children > MAX_EMBEDDED) {
+      tri_lists.push_back(0);  // end marker
     }
 //    printf("Leaf sz: %d %ld\n", leaf.child[0], leaf.boxes.size());
     kdtree.item.push_back(leaf);
@@ -534,7 +532,11 @@ int build_tree(const AABB& bbox, const std::vector<Event>& events, int depth) {
   left_aabb.max[best_axe] = best_line;
   right_aabb.min[best_axe] = best_line;
 
-  kdtree.item.push_back({best_axe, best_line, {-1, -1}});
+  kd kd {best_axe};
+  kd.split_line = best_line;
+  kd.child[0] = -1;
+  kd.child[1] = -1;
+  kdtree.item.push_back(kd);
   int res = kdtree.item.size() - 1;
 //  printf("******* kd %d\n", res);
   int left_child = build_tree(left_aabb, left, depth+1);
@@ -544,49 +546,49 @@ int build_tree(const AABB& bbox, const std::vector<Event>& events, int depth) {
   return res;
 }
 
-void print_tree() {
-  size_t max_tris = 0;
-  size_t num_tri_refs = 0;
-  size_t num_leafs = 0;
-  std::vector<size_t> num_small_leafs = {0,0,0,0,0,0,0,0,0,0,0};
-  printf("Tree: bbox: {%f %f %f} {%f %f %f}\n",
-      kdtree.bbox.min.x,
-      kdtree.bbox.min.y,
-      kdtree.bbox.min.z,
-      kdtree.bbox.max.x,
-      kdtree.bbox.max.y,
-      kdtree.bbox.max.z);
-  for (size_t i = 0; i < kdtree.item.size(); i++) {
-    const kd& k = kdtree.item[i];
-    max_tris = std::max(max_tris, k.boxes.size());
-    if (k.boxes.size() > 0) {
-      num_leafs++;
-      for (size_t j = 0; j < num_small_leafs.size(); j++) {
-        if (k.boxes.size() == j) num_small_leafs[j]++;
-      }
-    }
-    num_tri_refs += k.boxes.size();
-
+//void print_tree() {
+//  size_t max_tris = 0;
+//  size_t num_tri_refs = 0;
+//  size_t num_leafs = 0;
+//  std::vector<size_t> num_small_leafs = {0,0,0,0,0,0,0,0,0,0,0};
+//  printf("Tree: bbox: {%f %f %f} {%f %f %f}\n",
+//      kdtree.bbox.min.x,
+//      kdtree.bbox.min.y,
+//      kdtree.bbox.min.z,
+//      kdtree.bbox.max.x,
+//      kdtree.bbox.max.y,
+//      kdtree.bbox.max.z);
+//  for (size_t i = 0; i < kdtree.item.size(); i++) {
+//    const kd& k = kdtree.item[i];
+//    max_tris = std::max(max_tris, k.boxes.size());
+//    if (k.boxes.size() > 0) {
+//      num_leafs++;
+//      for (size_t j = 0; j < num_small_leafs.size(); j++) {
+//        if (k.boxes.size() == j) num_small_leafs[j]++;
+//      }
+//    }
+//    num_tri_refs += k.boxes.size();
+//
 //    printf("%ld: axe=%d, line=%f, left=%d right=%d [", i, k.split_axe, k.split_line,
 //        k.child[0], k.child[1]);
 //    for (size_t j = 0; j < k.boxes.size(); j++) {
 //      printf("%d,", k.boxes[j]);
 //    }
 //    printf("]\n");
-  }
+//  }
 //  for (size_t i = 0; i < boxes.size(); i++) {
 //    const auto& b = boxes[i];
 //    printf("box %ld: {%f %f %f} {%f %f %f}\n", i,
 //        b.min.x, b.min.y, b.min.z,
 //         b.max.x, b.max.y, b.max.z);
 //  }
-  printf("Max tris in a tree node: %ld avg %0.1f num leafs: %ld\n",
-      max_tris, float(num_tri_refs) / num_leafs, num_leafs);
-  for (size_t i = 0; i < num_small_leafs.size(); i++) {
-    printf("Small leaf sz=%ld count %ld (%2.1f%%)\n",
-        i, num_small_leafs[i], num_small_leafs[i] * 100.f / num_leafs);
-  }
-}
+//  printf("Max tris in a tree node: %ld avg %0.1f num leafs: %ld\n",
+//      max_tris, float(num_tri_refs) / num_leafs, num_leafs);
+//  for (size_t i = 0; i < num_small_leafs.size(); i++) {
+//    printf("Small leaf sz=%ld count %ld (%2.1f%%)\n",
+//        i, num_small_leafs[i], num_small_leafs[i] * 100.f / num_leafs);
+//  }
+//}
 
 int build() {
   AABB bbox = boxes[0];
@@ -604,7 +606,7 @@ int build() {
   }
   std::sort(events.begin(), events.end());
   assert(build_tree(bbox, events, 0) == 0);
-  print_tree();
+//  print_tree();
   return 0;
 }
 
@@ -700,16 +702,16 @@ void trace_parent(size_t kd, const tri& t) {
   printf("Cannot find parent\n");
 }
 
-void find(int tri) {
-  for (size_t i = 0; i < kdtree.item.size(); i++) {
-    for (size_t t = 0; t < kdtree.item[i].boxes.size(); t++) {
-      if (kdtree.item[i].boxes[t] == tri) {
-        printf("Found tri %d at %ld box %ld of %ld\n", tri, i, t, kdtree.item[i].boxes.size());
-        trace_parent(i, tris[tri]);
-      }
-    }
-  }
-}
+//void find(int tri) {
+//  for (size_t i = 0; i < kdtree.item.size(); i++) {
+//    for (size_t t = 0; t < kdtree.item[i].boxes.size(); t++) {
+//      if (kdtree.item[i].boxes[t] == tri) {
+//        printf("Found tri %d at %ld box %ld of %ld\n", tri, i, t, kdtree.item[i].boxes.size());
+//        trace_parent(i, tris[tri]);
+//      }
+//    }
+//  }
+//}
 
 void test_ray(const Ray& r) {
   int best = -1;
@@ -746,7 +748,7 @@ void test_ray(const Ray& r) {
   }
 //  printf("%d vs %d \n", best, best_ray);
   if (best != best_ray && best_ray == -1) {
-    find(best);
+//    find(best);
   }
   assert(best == best_ray);
 }

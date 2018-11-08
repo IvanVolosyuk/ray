@@ -28,6 +28,7 @@
 #include <optixu/optixu_math_namespace.h>
 #include <optixu/optixu_matrix_namespace.h>
 
+#include "shader/kd_types.hpp"
 #include "shader/input.hpp"
 
 using std::string;
@@ -326,6 +327,11 @@ void loadTexture(optix::Context ctx, const string& name, const Texture& tex) {
 
 static float denoise_blend = 0;
 
+// FIXME
+void init_scene();
+extern std::vector<tri> tris;
+extern std::vector<int> tri_lists;
+
 void OpenglRenderer::initRenderer() {
   ctx_ = optix::Context::create();
   std::vector<int> devices = {0};
@@ -415,6 +421,39 @@ void OpenglRenderer::initRenderer() {
   commandListDenoiser_->appendPostprocessingStage(tonemapStage, width_, height_);
   commandListDenoiser_->appendPostprocessingStage(denoiserStage, width_, height_);
   commandListDenoiser_->finalize();
+
+  init_scene();
+  ctx_["sysTreeBBox"]->setUserData(sizeof(kdtree.bbox), &kdtree.bbox);
+
+  tree_buffer = ctx_->createBuffer(RT_BUFFER_INPUT, RT_FORMAT_USER);
+  tree_buffer->setElementSize(sizeof(kd));
+  tree_buffer->setSize(kdtree.item.size());
+  kd* kdout = (kd*) tree_buffer->map(0, RT_BUFFER_MAP_WRITE_DISCARD);
+  for (size_t i = 0; i < kdtree.item.size(); i++) kdout[i] = kdtree.item[i];
+  tree_buffer->unmap(0);
+  ctx_["sysTree"]->setBuffer(tree_buffer);
+
+  tri_buffer = ctx_->createBuffer(RT_BUFFER_INPUT, RT_FORMAT_USER);
+  tri_buffer->setElementSize(sizeof(tri));
+  size_t sz = tris.size();
+  tri_buffer->setSize(sz);
+  tri* triout = (tri*) tri_buffer->map(0, RT_BUFFER_MAP_WRITE_DISCARD);
+  for (size_t i = 0; i < sz; i++) {
+    triout[i] = tris[i];
+  }
+  tri_buffer->unmap(0);
+  ctx_["sysTris"]->setBuffer(tri_buffer);
+
+  tri_lists_buffer = ctx_->createBuffer(RT_BUFFER_INPUT, RT_FORMAT_USER);
+  tri_lists_buffer->setElementSize(sizeof(int));
+  sz = tri_lists.size();
+  tri_lists_buffer->setSize(sz);
+  int* out = (int*) tri_lists_buffer->map(0, RT_BUFFER_MAP_WRITE_DISCARD);
+  for (size_t i = 0; i < sz; i++) {
+    out[i] = tri_lists[i];
+  }
+  tri_lists_buffer->unmap(0);
+  ctx_["sysTriLists"]->setBuffer(tri_lists_buffer);
 }
 
 bool OpenglRenderer::setup() {
@@ -544,7 +583,7 @@ float antialising = 1;
 
 void OpenglRenderer::draw() {
   // Safety alarm to avoid hang up.
-  alarm(5);
+  alarm(30);
 
   ImGui_ImplOpenGL3_NewFrame();
   ImGui_ImplSDL2_NewFrame(window_);
