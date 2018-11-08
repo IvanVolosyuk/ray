@@ -184,6 +184,7 @@ inline bool Ray::triangle_intersect(
 #define likely(x) __builtin_expect((x),1)
 #define unlikely(x) __builtin_expect((x),0)
 
+#if 0
 inline Hit2 Ray::traverse_recursive(int idx, float rmin, float rmax, bool front) const {
   ntraverses++;
   //printf("%d min %f max %f\n", idx, rmin, rmax);
@@ -234,6 +235,7 @@ inline Hit2 Ray::traverse_recursive(int idx, float rmin, float rmax, bool front)
   }
   return {-1, rmax};
 };
+#endif
 
 const float ray_epsilon = 1e-6;
 const float construction_epsilon = 0;//1e-5f;
@@ -259,7 +261,8 @@ inline Hit2 Ray::traverse_nonrecursive(int idx, float rmin, float rmax, bool fro
 
     while (true) {
       auto& item = kdtree.item[idx];
-      int axe = item.split_axe;
+      int val = item.split_axe_and_idx;
+      int axe = val & 3;
       P(idx);
       P(rmin);
       P(rmax);
@@ -267,31 +270,14 @@ inline Hit2 Ray::traverse_nonrecursive(int idx, float rmin, float rmax, bool fro
 //      depth++;
 //      printf("Look into %d axe %d line %f rmin %f rmax %f\n",
 //          idx, axe, item.split_line, rmin, rmax);
-      if (likely(axe == -1)) {
+      if (likely(axe == 3)) {
         float dist = rmax + ray_epsilon;
-        int hit = -1;
+        int hit = 0;
         float hit_u, hit_v;
         int pos;
         int* it;
 
-        for (int box_id : item.tri) {
-          if (box_id == 0) goto done;
-          float new_dist, u, v;
-          const auto& t = tris[box_id];
-          if (likely(triangle_intersect(t, &new_dist, &u, &v, front))) {
-            if (new_dist < rmin - ray_epsilon) {
-              continue;
-            }
-            if (new_dist <= dist) {
-              dist = new_dist;
-              hit = box_id;
-              hit_u = u;
-              hit_v = v;
-            }
-          }
-        }
-
-        pos = item.tri_list_pos;
+        pos = val >> 2;
         if (pos == 0) goto done;
         it = &tri_lists[pos];
 
@@ -312,7 +298,7 @@ inline Hit2 Ray::traverse_nonrecursive(int idx, float rmin, float rmax, bool fro
           }
         }
 done:
-        if (unlikely(hit != -1)) {
+        if (unlikely(hit != 0)) {
           const auto& t = tris[hit];
           vec3 normal = normalize(
               t.vertex_normal[0] * hit_u
@@ -331,19 +317,20 @@ done:
       int child_idx = idir[axe] < 0 ? 1 : 0;
       P(idir[axe]);
       P(child_idx);
+      int child[2] = { idx + 1, val >> 2 };
 
       if (unlikely(dist < rmin - ray_epsilon)) {
         // push 1 rmin rmax
 //        stack[stack_pos].dist = rmax;
 //        stack[stack_pos++].idx = kdtree.item[idx].child[child_idx^1];
-        idx = item.child[child_idx^1];
+        idx = child[child_idx^1];
         P("before");
 //        printf("dist %f < rmin %f : [%d] = %d (%f:%f)\n", dist, rmin, child_idx^1, idx, rmin, rmax);
       } else if (unlikely(dist > rmax + ray_epsilon)) {
         // push 0 rmin rmax
 //        stack[stack_pos].dist = rmax;
 //        stack[stack_pos++].idx = kdtree.item[idx].child[child_idx];
-        idx = item.child[child_idx];
+        idx = child[child_idx];
         P("after");
 //        printf("dist %f > rmax %f : [%d] = %d (%f:%f)\n", dist, rmax, child_idx, idx, rmin, rmax);
       } else {
@@ -360,12 +347,12 @@ done:
 //            dist, child_idx, item.child[child_idx], rmin, dist,
 //                  child_idx^1, item.child[child_idx^1], dist, rmax);
         stack[stack_pos].dist = rmax;
-        stack[stack_pos++].idx = item.child[child_idx^1];
+        stack[stack_pos++].idx = child[child_idx^1];
         // push 0 rmin dist
 //        stack[stack_pos].dist = dist;
 //        stack[stack_pos++].idx = kdtree.item[idx].child[child_idx];
         rmax = dist + ray_epsilon;
-        idx = item.child[child_idx];
+        idx = child[child_idx];
       }
     }
   }
@@ -481,9 +468,7 @@ int build_tree(const AABB& bbox, const std::vector<Event>& events, int depth) {
 //  printf("Best line: %f axe: %d cost: %f\n", best_line, best_axe, best_cost);
   if (best_axe == -1) {
     // No split
-    kd leaf {-1};
-    for (int i = 0; i < MAX_EMBEDDED; i++) leaf.tri[i] = 0;
-    leaf.tri_list_pos = 0;
+    kd leaf {3};
 
     int num_children = 0;
     for (const Event& e : events) {
@@ -491,12 +476,8 @@ int build_tree(const AABB& bbox, const std::vector<Event>& events, int depth) {
       int incr = std::get<1>(e);
       int box_idx = std::get<2>(e);
       if (axe == 0 && incr == -1) {
-        if (num_children < MAX_EMBEDDED) {
-          leaf.tri[num_children++] = box_idx;
-          continue;
-        }
-        if (num_children == MAX_EMBEDDED) {
-          leaf.tri_list_pos = tri_lists.size();
+        if (num_children == 0) {
+          leaf.split_axe_and_idx = tri_lists.size() << 2 | 3;
         }
         tri_lists.push_back(box_idx);
         num_children++;
@@ -531,17 +512,15 @@ int build_tree(const AABB& bbox, const std::vector<Event>& events, int depth) {
   left_aabb.max[best_axe] = best_line;
   right_aabb.min[best_axe] = best_line;
 
-  kd kd {best_axe};
+  kd kd;
   kd.split_line = best_line;
-  kd.child[0] = -1;
-  kd.child[1] = -1;
   kdtree.item.push_back(kd);
   int res = kdtree.item.size() - 1;
 //  printf("******* kd %d\n", res);
   int left_child = build_tree(left_aabb, left, depth+1);
   int right_child = build_tree(right_aabb, right, depth+1);
-  kdtree.item[res].child[0] = left_child;
-  kdtree.item[res].child[1] = right_child;
+  assert(left_child == res + 1);
+  kdtree.item[res].split_axe_and_idx = right_child << 2 | best_axe;
   return res;
 }
 
@@ -668,38 +647,38 @@ void gen2() {
 //  }
 }
 
-void trace_parent(size_t kd, const tri& t) {
-  if (kd == 0) {
-    return;
-  }
-  for (size_t i = 0; i < kdtree.item.size(); i++) {
-    auto& item = kdtree.item[i];
-
-    int nleft = 0;
-    int neq = 0;
-    int nright = 0;
-    for (int v = 0; v < 3; v++) {
-      if (t.vertex[v][item.split_axe] < item.split_line) nleft++;
-      if (t.vertex[v][item.split_axe] > item.split_line) nright++;
-      if (t.vertex[v][item.split_axe] == item.split_line) neq++;
-    }
-    if (item.child[0] == (int)kd) {
-      printf("Parent %ld axe %d line %f child[0] left %d eq %d right %d\n", i, item.split_axe, item.split_line,
-          nleft, neq, nright);
-      assert (nleft > 0);
-      trace_parent(i, t);
-      return;
-    }
-    if (item.child[1] == (int)kd) {
-      printf("Parent %ld axe %d line %f child[1] left %d eq %d right %d\n", i, item.split_axe, item.split_line,
-          nleft, neq, nright);
-      assert (nright > 0);
-      trace_parent(i, t);
-      return;
-    }
-  }
-  printf("Cannot find parent\n");
-}
+//void trace_parent(size_t kd, const tri& t) {
+//  if (kd == 0) {
+//    return;
+//  }
+//  for (size_t i = 0; i < kdtree.item.size(); i++) {
+//    auto& item = kdtree.item[i];
+//
+//    int nleft = 0;
+//    int neq = 0;
+//    int nright = 0;
+//    for (int v = 0; v < 3; v++) {
+//      if (t.vertex[v][item.split_axe] < item.split_line) nleft++;
+//      if (t.vertex[v][item.split_axe] > item.split_line) nright++;
+//      if (t.vertex[v][item.split_axe] == item.split_line) neq++;
+//    }
+//    if (item.child[0] == (int)kd) {
+//      printf("Parent %ld axe %d line %f child[0] left %d eq %d right %d\n", i, item.split_axe, item.split_line,
+//          nleft, neq, nright);
+//      assert (nleft > 0);
+//      trace_parent(i, t);
+//      return;
+//    }
+//    if (item.child[1] == (int)kd) {
+//      printf("Parent %ld axe %d line %f child[1] left %d eq %d right %d\n", i, item.split_axe, item.split_line,
+//          nleft, neq, nright);
+//      assert (nright > 0);
+//      trace_parent(i, t);
+//      return;
+//    }
+//  }
+//  printf("Cannot find parent\n");
+//}
 
 //void find(int tri) {
 //  for (size_t i = 0; i < kdtree.item.size(); i++) {

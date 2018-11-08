@@ -415,41 +415,15 @@ Hit2 MyRay::traverse_nonrecursive(int idx, float rmin, float rmax, bool front) c
 
     while (true) {
       kd item = sysTree[idx];
-      int axe = item.split_axe;
-      P(idx);
-      P(rmin);
-      P(rmax);
-      P(axe);
-//      depth++;
-//      printf("Look into %d axe %d line %f rmin %f rmax %f\n",
-//          idx, axe, item.split_line, rmin, rmax);
-      if (likely(axe == -1)) {
+      int val = item.split_axe_and_idx;
+      int axe = val & 3;
+
+      if (likely(axe == 3)) {
         float dist = rmax + ray_epsilon;
         int hit = 0;
         float hit_u, hit_v;
-        int pos;
-        int* it;
 
-//        for (int box_id : item.tri) {
-//          if (box_id == 0) goto done;
-//          float new_dist, u, v;
-//          const auto& t = sysTris[box_id];
-//          if (likely(triangle_intersect(t, &new_dist, &u, &v, front))) {
-//            if (new_dist < rmin - ray_epsilon) {
-//              continue;
-//            }
-//            if (new_dist <= dist) {
-//              dist = new_dist;
-//              hit = box_id;
-//              hit_u = u;
-//              hit_v = v;
-//            }
-//          }
-//        }
-
-        pos = item.tri_list_pos;
-//        if (pos == 0) goto done;
-        it = &sysTriLists[pos];
+        int* it = &sysTriLists[val >> 2];
 
         int box_id;
         while ((box_id = *it++) != 0) {
@@ -486,23 +460,24 @@ Hit2 MyRay::traverse_nonrecursive(int idx, float rmin, float rmax, bool front) c
       int child_idx = idir[axe] < 0 ? 1 : 0;
       P(idir[axe]);
       P(child_idx);
+      int child[2] = { idx + 1, val >> 2 };
 
       if (unlikely(dist < rmin - ray_epsilon)) {
         // push 1 rmin rmax
-        idx = item.child[child_idx^1];
+        idx = child[child_idx^1];
         P("before");
       } else if (unlikely(dist > rmax + ray_epsilon)) {
         // push 0 rmin rmax
-        idx = item.child[child_idx];
+        idx = child[child_idx];
         P("after");
       } else {
         P("both");
         // push 1 dist rmax
         stack[stack_pos].dist = rmax;
-        stack[stack_pos++].idx = item.child[child_idx^1];
+        stack[stack_pos++].idx = child[child_idx^1];
         // push 0 rmin dist
         rmax = dist + ray_epsilon;
-        idx = item.child[child_idx];
+        idx = child[child_idx];
       }
     }
   }
@@ -1126,6 +1101,12 @@ void room_trace(
   RoomHit p = room_hit(ray.seed, ray.norm_ray, ray.origin);
   if (p.min_dist == max_distance) {
     ray.intensity = ray.color_filter * vec3(0.02, 0.02, 0.2);
+    if ((ray.flags & FLAG_ALBEDO) == 0) {
+      ray.albedo = vec3(0.02, 0.02, 0.2);
+    }
+    if ((ray.flags & FLAG_NORMAL) == 0) {
+      ray.result_normal = make_float3(0);
+    }
     ray.flags |= FLAG_TERMINATE;
     return;
   }

@@ -33,17 +33,8 @@ struct tri {
 const int MAX_EMBEDDED = 0;
 class kd {
  public:
-  int split_axe;
-  union {
-    struct {
-      float split_line;
-      int child[2];
-    };
-    struct {
-      int tri[MAX_EMBEDDED];
-      int tri_list_pos;
-    };
-  };
+  int split_axe_and_idx;
+  float split_line;
 };
 
 struct kdtree {

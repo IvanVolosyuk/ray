@@ -48,22 +48,11 @@ struct tri {
   float padding[2];
 };
 
-const int MAX_EMBEDDED = 0;
-
 struct kd {
   public:
     kd() = default;
-    int split_axe;
-    union {
-      struct {
-        float split_line;
-        int child[2];
-      };
-      struct {
-        int tri[MAX_EMBEDDED];
-        int tri_list_pos;
-      };
-    };
+    int split_axe_and_idx;
+    float split_line;
 };
 
 #define P(a) {}
