@@ -425,7 +425,7 @@ Hit2 MyRay::traverse_nonrecursive(int idx, float rmin, float rmax, bool front) c
 //          idx, axe, item.split_line, rmin, rmax);
       if (likely(axe == -1)) {
         float dist = rmax + ray_epsilon;
-        int hit = -1;
+        int hit = 0;
         float hit_u, hit_v;
         int pos;
         int* it;
@@ -451,9 +451,8 @@ Hit2 MyRay::traverse_nonrecursive(int idx, float rmin, float rmax, bool front) c
 //        if (pos == 0) goto done;
         it = &sysTriLists[pos];
 
-        while (true) {
-          int box_id = *it++;
-          if (box_id == 0) goto done;
+        int box_id;
+        while ((box_id = *it++) != 0) {
           float new_dist, u, v;
           const auto& t = sysTris[box_id];
           if (likely(triangle_intersect(t, &new_dist, &u, &v, front))) {
@@ -468,8 +467,7 @@ Hit2 MyRay::traverse_nonrecursive(int idx, float rmin, float rmax, bool front) c
             }
           }
         }
-done:
-        if (unlikely(hit != -1)) {
+        if (unlikely(hit != 0)) {
           const auto& t = sysTris[hit];
           vec3 normal = normalize(
               t.vertex_normal[0] * hit_u

@@ -22,9 +22,13 @@ void print(const char*, const char* v) {
 }
 
 #include "shader/shader.hpp"
+bool scene_loaded = false;
 
 void init_scene() {
+  if (scene_loaded) return;
+  scene_loaded = true;
   tris.clear();
+  tris.push_back({});
   boxes.clear();
   tri_lists.clear();
   tri_lists.push_back({});

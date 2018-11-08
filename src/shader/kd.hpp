@@ -295,9 +295,8 @@ inline Hit2 Ray::traverse_nonrecursive(int idx, float rmin, float rmax, bool fro
         if (pos == 0) goto done;
         it = &tri_lists[pos];
 
-        while (true) {
-          int box_id = *it++;
-          if (box_id == 0) goto done;
+        int box_id;
+        while ((box_id = *it++) != 0) {
           float new_dist, u, v;
           const auto& t = tris[box_id];
           if (likely(triangle_intersect(t, &new_dist, &u, &v, front))) {
@@ -591,8 +590,8 @@ int build_tree(const AABB& bbox, const std::vector<Event>& events, int depth) {
 //}
 
 int build() {
-  AABB bbox = boxes[0];
-  for (size_t i = 1; i < boxes.size(); i++) {
+  AABB bbox = boxes[1];
+  for (size_t i = 2; i < boxes.size(); i++) {
     bbox = bbox.combine(boxes[i]);
   }
   kdtree.bbox = bbox;
