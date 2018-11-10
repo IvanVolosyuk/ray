@@ -569,7 +569,7 @@ bool OpenglRenderer::WantCaptureKeyboard() {
 }
 
 bool show_demo_window = false;
-bool show_settings = true;
+bool show_settings = false;
 vec3 clear_color;
 vec3 absorption_color = vec3(0.17, 0.17, 0.53);
 float absorption_intensity = 1.0f;

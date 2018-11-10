@@ -227,6 +227,14 @@ float3 wall_distr(uint& seed, float scattering) {
 
 RT_FUNCTION
 float3 light_distr(uint& seed) {
+#if 0
+  // 167 FPS
+  float a = 2 * M_PI * rand1(seed);
+  float b = M_PI * rand1(seed);
+  float h = cosf(b); // -1..1
+  float r = sinf(b);
+  return float3{h, r * cosf(a), r * cosf(a)} * sysLightSize;
+#else
   while (true) {
     float x = srand1(seed);
     float y = srand1(seed);
@@ -235,6 +243,7 @@ float3 light_distr(uint& seed) {
       return float3{x,y,z} * sysLightSize;
     }
   }
+#endif
 }
 
 RT_FUNCTION
