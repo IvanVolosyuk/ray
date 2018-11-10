@@ -29,7 +29,7 @@ void set_focus_distance(float x, float y) {
   focused_distance = SoftwareRenderer::distance(x, y, window_width, window_height);
 }
 
-int run_gl = false;
+int run_gl = true;
 
 std::unique_ptr<Renderer> MakeRenderer() {
   std::unique_ptr<Renderer> r;
@@ -340,6 +340,7 @@ G       = Switch Sofware / OpenGL renderer
 
       renderer->draw();
       fps_frames += max_rays;
+//      if (fps_frames > 20) return 0;
     }
 exit:
     renderer.reset();
