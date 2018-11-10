@@ -27,7 +27,9 @@ struct MyRay {
   RT_FUNCTION
   void intersect(AABB box, float& tmin, float& tmax) const;
   RT_FUNCTION
-  bool triangle_intersect(const tri& tr, float* t, float* u, float* v, bool front) const;
+    bool triangle_intersect( 
+        const tri& tr, float tmin, float tmax,
+        float& t, float& beta, float& gamma, bool front) const;
   RT_FUNCTION
   static MyRay make(vec3 origin, vec3 dir) {
     vec3 idir { 1.f/dir.x, 1.f/dir.y, 1.f/dir.z};
@@ -286,117 +288,20 @@ void MyRay::intersect(AABB box, float& tmin, float& tmax) const {
 
 RT_FUNCTION
 bool MyRay::triangle_intersect( 
-    const tri& tr, 
-    float* t, float* u, float* v, bool front) const {
-  const float kEpsilon = 1e-10;
-//  printf("[0]{%f %f %f}, [1]{%f %f %f}, [2]{%f %f %f}\norigin {%f %f %f} dir {%f %f %f}\n",
-//      tr.vertex[0].x, tr.vertex[0].y, tr.vertex[0].z,
-//      tr.vertex[1].x, tr.vertex[1].y, tr.vertex[1].z,
-//      tr.vertex[2].x, tr.vertex[2].y, tr.vertex[2].z,
-//      origin.x, origin.y, origin.z,
-//      dir.x, dir.y, dir.z);
+    const tri& tr, float tmin, float tmax,
+    float& t, float& beta, float& gamma, bool front) const {
+  const float3 e0 = tr.vertex[1] - tr.vertex[0];
+  const float3 e1 = tr.vertex[0] - tr.vertex[2];
+  float3 n  = cross( e1, e0 );
 
-#define CULLING
-//#define MOLLER_TRUMBORE
-#ifdef MOLLER_TRUMBORE 
-    vec3 v0v1 = tr.vertex[1] - tr.vertex[0]; 
-    vec3 v0v2 = tr.vertex[2] - tr.vertex[0]; 
-    vec3 pvec = cross(dir, v0v2); 
-    float det = dot(v0v1, pvec); 
-#ifdef CULLING 
-    // if the determinant is negative the triangle is backfacing
-    // if the determinant is close to 0, the ray misses the triangle
-    if (det < kEpsilon) return false; 
-#else 
-    // ray and triangle are parallel if det is close to 0
-    if (fabs(det) < kEpsilon) return false; 
-#endif 
-    float invDet = 1 / det; 
- 
-    vec3 tvec = origin - tr.vertex[0]; 
-    *u = dot(tvec, pvec) * invDet; 
-    if (*u < 0 || *u > 1) return false; 
- 
-    vec3 qvec = cross(tvec, v0v1); 
-    *v = dot(dir, qvec) * invDet; 
-    if (*v < 0 || *u + *v > 1) return false; 
- 
-    *t = dot(v0v2, qvec) * invDet; 
- 
-    return true; 
-#else 
-    vec3 N = tr.normal;
- 
-    // Step 1: finding P
- 
-    // check if ray and plane are parallel ?
-    float NdotRayDirection = dot(N, dir); 
-#ifdef CULLING 
-    if (front ? NdotRayDirection > kEpsilon : NdotRayDirection < -kEpsilon) {
-      P(NdotRayDirection);
-      return false;
-    }
-#else
-    if (fabs(NdotRayDirection) < kEpsilon) { // almost 0 
-      P(NdotRayDirection);
-//      printf("%f\n", NdotRayDirection);
-        return false; // they are parallel so they don't intersect ! 
-    }
-#endif
- 
-    // compute t (equation 3)
-    *t = (dot(N, tr.vertex[0] - origin)) / NdotRayDirection; 
-    // check if the triangle is in behind the ray
-    if (*t < 0) {
-      P(*t);
-      return false; // the triangle is behind 
-    }
- 
-    // compute the intersection point using equation 1
-    vec3 P = origin + dir * *t; 
- 
-    // Step 2: inside-outside test
-    vec3 C; // vector perpendicular to triangle's plane 
- 
-    // edge 0
-    vec3 edge0 = tr.vertex[1] - tr.vertex[0]; 
-    vec3 vp0 = P - tr.vertex[0]; 
-    C = cross(edge0, vp0); 
-    if (dot(N, C) < 0) {
-      P(vp0);
-      P(edge0);
-      P(N);
-      return false; // P is on the right side 
-    }
- 
-    // edge 1
-    vec3 edge1 = tr.vertex[2] - tr.vertex[1]; 
-    vec3 vp1 = P - tr.vertex[1]; 
-    C = cross(edge1, vp1); 
-    if ((*u = dot(N, C)) < 0) {
-      P(vp1);
-      P(edge1);
-      P(N);
-      return false; // P is on the right side 
-    }
- 
-    // edge 2
-    vec3 edge2 = tr.vertex[0] - tr.vertex[2]; 
-    vec3 vp2 = P - tr.vertex[2]; 
-    C = cross(edge2, vp2); 
-    if ((*v = dot(N, C)) < 0) {
-      P(vp2);
-      P(edge2);
-      P(N);
-      return false; // P is on the right side; 
-    }
+  const float3 e2 = ( 1.0f / dot( n, dir ) ) * ( tr.vertex[0] - origin );
+  const float3 i  = cross( dir, e2 );
 
-    *u *= tr.inv_denom;
-    *v *= tr.inv_denom;
- 
-    P(true);
-    return true; // this ray hits the triangle 
-#endif 
+  beta  = dot( i, e1 );
+  gamma = dot( i, e0 );
+  t     = dot( n, e2 );
+
+  return ( (t<tmax) & (t>tmin) & (beta>=0.0f) & (gamma>=0.0f) & (beta+gamma<=1) );
 }
 
 const float ray_epsilon = 1e-6;
@@ -428,35 +333,20 @@ Hit2 MyRay::traverse_nonrecursive(int idx, float rmin, float rmax, bool front) c
       int axe = val & 3;
 
       if (likely(axe == 3)) {
-        float dist = rmax + ray_epsilon;
-        int hit = 0;
-        float hit_u, hit_v;
-
         int* it = &sysTriLists[val >> 2];
 
-        int box_id;
-        while ((box_id = *it++) != 0) {
-          float new_dist, u, v;
-          const auto& t = sysTris[box_id];
-          if (likely(triangle_intersect(t, &new_dist, &u, &v, front))) {
-            if (new_dist < rmin - ray_epsilon) {
-              continue;
-            }
-            if (new_dist <= dist) {
-              dist = new_dist;
-              hit = box_id;
-              hit_u = u;
-              hit_v = v;
-            }
-          }
-        }
-        if (unlikely(hit != 0)) {
+        int hit;
+        while ((hit = *it++) != 0) {
+          float dist, u, v;
           const auto& t = sysTris[hit];
-          vec3 normal = normalize(
-              t.vertex_normal[0] * hit_u
-              + t.vertex_normal[1] * hit_v
-              + t.vertex_normal[2] * (1-hit_u-hit_v));
-          return {hit, dist, normal};
+          if (likely(triangle_intersect(t, rmin - ray_epsilon, rmax + ray_epsilon,
+                  dist, u, v, front))) {
+            vec3 normal = normalize(
+                t.vertex_normal[0] * u
+                + t.vertex_normal[1] * v
+                + t.vertex_normal[2] * (1-u-v));
+            return {hit, dist, normal};
+          }
         }
         rmin = rmax - 2 * ray_epsilon;
         break;
@@ -548,6 +438,8 @@ Hit ball_hit(const int id, const float3 norm_ray, const float3 origin) {
   }
   return Hit{id, closest_point_distance_from_viewer, distance_from_object_center2};
 }
+
+__device__ const float rmin_epsilon = 0.0001;
 
 RT_FUNCTION
 Hit2 bbox_hit(const float3 norm_ray, const float3 origin,
@@ -989,7 +881,7 @@ void compute_light(
       float light_distance = 1.f/light_distance_inv;
       float3 light_from_point_norm = light_from_point * light_distance_inv;
 
-      Hit2 hit = bbox_hit(light_from_point_norm, ray.origin, 0, light_distance, true);
+      Hit2 hit = bbox_hit(light_from_point_norm, ray.origin, rmin_epsilon, light_distance, true);
 
       if (hit.distance > light_distance) {
         float a = dot(ray.norm_ray, light_from_point_norm);
@@ -1076,7 +968,7 @@ void triangle_trace (
     ray.norm_ray = refract(diamond_refraction_index, normal, ray.norm_ray);
 
     for (int i = 0; i < 300; i++) {
-      Hit2 hit = bbox_hit(ray.norm_ray, ray.origin, 0, max_distance, false);
+      Hit2 hit = bbox_hit(ray.norm_ray, ray.origin, rmin_epsilon, max_distance, false);
       if (hit.id == -1) {
         ray.intensity = vec3(1, 0, 0);
 //        printf("No hit %d\n", i);
@@ -1227,7 +1119,7 @@ void trace (RayData& ray) {
 
   int depth = 0;
   while (true) {
-    Hit2 hit = bbox_hit(ray.norm_ray, ray.origin, 0, max_distance, true);
+    Hit2 hit = bbox_hit(ray.norm_ray, ray.origin, rmin_epsilon, max_distance, true);
 
     Hit light = light_hit(ray.norm_ray, ray.origin);
     if (light.closest_point_distance_from_viewer_ <

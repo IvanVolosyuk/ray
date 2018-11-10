@@ -454,6 +454,10 @@ void OpenglRenderer::initRenderer() {
   }
   tri_lists_buffer->unmap(0);
   ctx_["sysTriLists"]->setBuffer(tri_lists_buffer);
+
+  // Construct objects hierarchy
+  auto group = ctx_->createGeometryGroup();
+//  group->setAcceleration(nullptr);
 }
 
 bool OpenglRenderer::setup() {

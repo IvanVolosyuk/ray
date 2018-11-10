@@ -53,6 +53,9 @@ Hit ball_hit(in int id, in vec3 norm_ray, in vec3 origin) {
   }
   return Hit(id, closest_point_distance_from_viewer, distance_from_object_center2);
 }
+
+float rmin_epsilon = 0.0001;
+
 Hit2 bbox_hit(in vec3 norm_ray, in vec3 origin, float rmin, float rmax, bool front) {
   Ray r = Ray::make(origin, norm_ray);
   auto res = r.intersect(kdtree.bbox);
@@ -280,7 +283,7 @@ void compute_light(
     float light_distance = 1.f/light_distance_inv;
     vec3 light_from_point_norm = light_from_point * light_distance_inv;
 
-    Hit2 hit = bbox_hit(light_from_point_norm, ray.origin, kEpsilon, max_distance, true);
+    Hit2 hit = bbox_hit(light_from_point_norm, ray.origin, ray_epsilon, max_distance, true);
 
     if (hit.distance > light_distance) {
       float a = dot(ray.norm_ray, light_from_point_norm);
@@ -423,7 +426,7 @@ void triangle_trace (
     ray.norm_ray = refract(diamond_refraction_index, normal, ray.norm_ray);
 
     for (int i = 0; i < 300; i++) {
-      Hit2 hit = bbox_hit(ray.norm_ray, ray.origin, 0, max_distance, false);
+      Hit2 hit = bbox_hit(ray.norm_ray, ray.origin, ray_epsilon, max_distance, false);
       if (hit.id == -1) {
         ray.intensity = vec3(1, 0, 0);
 //        printf("No hit %d\n", i);
@@ -491,7 +494,7 @@ vec3 trace (RayData ray) {
   int depth = 0;
   while (true) {
     Hit light = light_hit(ray.norm_ray, ray.origin);
-    Hit2 hit = bbox_hit(ray.norm_ray, ray.origin, kEpsilon, light.closest_point_distance_from_viewer_, true);
+    Hit2 hit = bbox_hit(ray.norm_ray, ray.origin, ray_epsilon, light.closest_point_distance_from_viewer_, true);
 
     if (light.closest_point_distance_from_viewer_ <
         hit.distance) {

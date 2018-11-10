@@ -1,4 +1,4 @@
-TARGETS=ray shader.comp ray.ptx exception.ptx anyhit.ptx
+TARGETS=ray shader.comp ray.ptx triangle.ptx exception.ptx
 
 all: ${TARGETS}
 

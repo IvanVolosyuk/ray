@@ -44,8 +44,6 @@ struct tri {
   vec3 vertex[3];
   vec3 normal;
   vec3 vertex_normal[3];
-  float inv_denom;
-  float padding[2];
 };
 
 struct kd {

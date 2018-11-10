@@ -26,7 +26,7 @@ vpath %.cu ../src/optix
 .PHONY: all
 .PHONY: clean
 
-all: ray shader.comp ray.ptx exception.ptx anyhit.ptx
+all: ray shader.comp ray.ptx triangle.ptx exception.ptx anyhit.ptx
 
 ray: $(OBJ)
 	$(CXX) -o $@ $(OBJ) $(LDFLAGS)

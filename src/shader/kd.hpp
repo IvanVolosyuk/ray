@@ -46,7 +46,8 @@ struct Ray {
   Hit2 traverse_nonrecursive(int idx, float rmin, float rmax, bool front) const;
   bool intersect(AABB box, float* tmin_out) const;
   std::pair<float,float> intersect(AABB box) const;
-  bool triangle_intersect(const tri& tr, float* t, float* u, float* v, bool front) const;
+  bool triangle_intersect(const tri& tr, float tmin, float tmax,
+    float& t, float& beta, float& gamma, bool front) const;
   static Ray make(vec3 origin, vec3 dir) {
     vec3 idir { 1.f/dir[0], 1.f/dir[1], 1.f/dir[2]};
     if (!isfinite(idir[0]) || idir[0] > 1e10 || idir[0] < -1e10) idir[0] = 1e10;
@@ -68,174 +69,29 @@ int64_t ntraverses = 0;
 int64_t nintersects = 0;
 
 inline bool Ray::triangle_intersect( 
-    const tri& tr, 
-    float* t, float* u, float* v, bool front) const {
-  float kEpsilon = 1e-10;
-//  printf("[0]{%f %f %f}, [1]{%f %f %f}, [2]{%f %f %f}\norigin {%f %f %f} dir {%f %f %f}\n",
-//      tr.vertex[0].x, tr.vertex[0].y, tr.vertex[0].z,
-//      tr.vertex[1].x, tr.vertex[1].y, tr.vertex[1].z,
-//      tr.vertex[2].x, tr.vertex[2].y, tr.vertex[2].z,
-//      origin.x, origin.y, origin.z,
-//      dir.x, dir.y, dir.z);
+    const tri& tr, float tmin, float tmax,
+    float& t, float& beta, float& gamma, bool front) const {
+  const vec3 e0 = tr.vertex[1] - tr.vertex[0];
+  const vec3 e1 = tr.vertex[0] - tr.vertex[2];
+  vec3 n  = tr.normal; //cross( e1, e0 );
+  float d = dot( n, dir );
+  const float kEpsilon = 1e-10;
+  if (front ? d > -kEpsilon : d < kEpsilon) {
+    return false;
+  }
 
-#define CULLING
-//#define MOLLER_TRUMBORE
-#ifdef MOLLER_TRUMBORE 
-    vec3 v0v1 = tr.vertex[1] - tr.vertex[0]; 
-    vec3 v0v2 = tr.vertex[2] - tr.vertex[0]; 
-    vec3 pvec = cross(dir, v0v2); 
-    float det = dot(v0v1, pvec); 
-#ifdef CULLING 
-    // if the determinant is negative the triangle is backfacing
-    // if the determinant is close to 0, the ray misses the triangle
-    if (det < kEpsilon) return false; 
-#else 
-    // ray and triangle are parallel if det is close to 0
-    if (fabs(det) < kEpsilon) return false; 
-#endif 
-    float invDet = 1 / det; 
- 
-    vec3 tvec = origin - tr.vertex[0]; 
-    *u = dot(tvec, pvec) * invDet; 
-    if (*u < 0 || *u > 1) return false; 
- 
-    vec3 qvec = cross(tvec, v0v1); 
-    *v = dot(dir, qvec) * invDet; 
-    if (*v < 0 || *u + *v > 1) return false; 
- 
-    *t = dot(v0v2, qvec) * invDet; 
- 
-    return true; 
-#else 
-    vec3 N = tr.normal;
- 
-    // Step 1: finding P
- 
-    // check if ray and plane are parallel ?
-    float NdotRayDirection = dot(N, dir); 
-#ifdef CULLING 
-    if (front ? NdotRayDirection > kEpsilon : NdotRayDirection < -kEpsilon) {
-      P(NdotRayDirection);
-      return false;
-    }
-#else
-    if (fabs(NdotRayDirection) < kEpsilon) { // almost 0 
-      P(NdotRayDirection);
-//      printf("%f\n", NdotRayDirection);
-        return false; // they are parallel so they don't intersect ! 
-    }
-#endif
- 
-    // compute t (equation 3)
-    *t = (dot(N, tr.vertex[0] - origin)) / NdotRayDirection; 
-    // check if the triangle is in behind the ray
-    if (*t < 0) {
-      P(*t);
-      return false; // the triangle is behind 
-    }
- 
-    // compute the intersection point using equation 1
-    vec3 P = origin + dir * *t; 
- 
-    // Step 2: inside-outside test
-    vec3 C; // vector perpendicular to triangle's plane 
- 
-    // edge 0
-    vec3 edge0 = tr.vertex[1] - tr.vertex[0]; 
-    vec3 vp0 = P - tr.vertex[0]; 
-    C = cross(edge0, vp0); 
-    if (dot(N, C) < 0) {
-      P(vp0);
-      P(edge0);
-      P(N);
-      return false; // P is on the right side 
-    }
- 
-    // edge 1
-    vec3 edge1 = tr.vertex[2] - tr.vertex[1]; 
-    vec3 vp1 = P - tr.vertex[1]; 
-    C = cross(edge1, vp1); 
-    if ((*u = dot(N, C)) < 0) {
-      P(vp1);
-      P(edge1);
-      P(N);
-      return false; // P is on the right side 
-    }
- 
-    // edge 2
-    vec3 edge2 = tr.vertex[0] - tr.vertex[2]; 
-    vec3 vp2 = P - tr.vertex[2]; 
-    C = cross(edge2, vp2); 
-    if ((*v = dot(N, C)) < 0) {
-      P(vp2);
-      P(edge2);
-      P(N);
-      return false; // P is on the right side; 
-    }
+  const vec3 e2 = ( tr.vertex[0] - origin ) * ( 1.0f / dot( n, dir ) );
+  const vec3 i  = cross( dir, e2 );
 
-    *u *= tr.inv_denom;
-    *v *= tr.inv_denom;
- 
-    P(true);
-    return true; // this ray hits the triangle 
-#endif 
+  beta  = dot( i, e1 );
+  gamma = dot( i, e0 );
+  t     = dot( n, e2 );
+
+  return ( (t<tmax) & (t>tmin) & (beta>=0.0f) & (gamma>=0.0f) & (beta+gamma<=1) );
 }
 
 #define likely(x) __builtin_expect((x),1)
 #define unlikely(x) __builtin_expect((x),0)
-
-#if 0
-inline Hit2 Ray::traverse_recursive(int idx, float rmin, float rmax, bool front) const {
-  ntraverses++;
-  //printf("%d min %f max %f\n", idx, rmin, rmax);
-  int axe = kdtree.item[idx].split_axe;
-  if (likely(axe == -1)) {
-    float dist = rmax;
-    vec3 color;
-    int hit = -1;
-    //printf("node boxes: %d %ld\n", kdtree.item[idx].child[0], kdtree.item[idx].boxes.size());
-    // FIXME: broken
-    for (auto& box_id : kdtree.item[idx].tri) {
-      nintersects++;
-//      printf("** %d", box_id);
-      float new_dist, u, v;
-      if (triangle_intersect(tris[box_id], &new_dist, &u, &v, front)) {
-        
-//        printf("* %d * %f vs %f rmax %f\n", box_id, new_dist, dist, rmax);
-        if (new_dist < dist) {
-          dist = new_dist;
-          hit = box_id;
-          color = vec3(1, u, v);
-        }
-      }
-    }
-    if (unlikely(hit != -1)) {
-      nhits++;
-//      printf("Found intersection with rmin=%f rmax=%f idx %d dist %f\n", rmin, rmax, idx, dist);
-    } else {
-//      printf("No intersection at rmin=%f rmax=%f idx %d\n", rmin, rmax, idx);
-    }
-    return {hit, dist, color};
-  }
-  float line = kdtree.item[idx].split_line;
-
-  // line = origin + dir * dist
-  // dist = (line - origin) * idir
-  float dist = (line - origin[axe]) * idir[axe];
-  int child_idx = idir[axe] < 0 ? 1 : 0;
-//  printf("dist %f rmin %f rmax %f\n", dist, rmin, rmax);
-  Hit2 hit;
-  if (dist < rmin) {
-    if ((hit = traverse_recursive(kdtree.item[idx].child[child_idx^1], rmin, rmax, front)).id != -1) return hit;
-  } else if (dist > rmax) {
-    if ((hit = traverse_recursive(kdtree.item[idx].child[child_idx], rmin, rmax, front)).id != -1) return hit;
-  } else {
-    if ((hit = traverse_recursive(kdtree.item[idx].child[child_idx], rmin, dist, front)).id != -1) return hit;
-    if ((hit = traverse_recursive(kdtree.item[idx].child[child_idx^1], dist, rmax, front)).id != -1) return hit;
-  }
-  return {-1, rmax};
-};
-#endif
 
 const float ray_epsilon = 1e-6;
 const float construction_epsilon = 0;//1e-5f;
@@ -271,9 +127,6 @@ inline Hit2 Ray::traverse_nonrecursive(int idx, float rmin, float rmax, bool fro
 //      printf("Look into %d axe %d line %f rmin %f rmax %f\n",
 //          idx, axe, item.split_line, rmin, rmax);
       if (likely(axe == 3)) {
-        float dist = rmax + ray_epsilon;
-        int hit = 0;
-        float hit_u, hit_v;
         int pos;
         int* it;
 
@@ -281,31 +134,20 @@ inline Hit2 Ray::traverse_nonrecursive(int idx, float rmin, float rmax, bool fro
         if (pos == 0) goto done;
         it = &tri_lists[pos];
 
-        int box_id;
-        while ((box_id = *it++) != 0) {
-          float new_dist, u, v;
-          const auto& t = tris[box_id];
-          if (likely(triangle_intersect(t, &new_dist, &u, &v, front))) {
-            if (new_dist < rmin - ray_epsilon) {
-              continue;
-            }
-            if (new_dist <= dist) {
-              dist = new_dist;
-              hit = box_id;
-              hit_u = u;
-              hit_v = v;
-            }
+        int hit;
+        while ((hit = *it++) != 0) {
+          float dist, u, v;
+          const auto& t = tris[hit];
+          if (likely(triangle_intersect(t, rmin - ray_epsilon,
+                  rmax + ray_epsilon, dist, u, v, front))) {
+            vec3 normal = normalize(
+                t.vertex_normal[0] * u
+                + t.vertex_normal[1] * v
+                + t.vertex_normal[2] * (1-u-v));
+            return {hit, dist, vec3(1), normal};
           }
         }
 done:
-        if (unlikely(hit != 0)) {
-          const auto& t = tris[hit];
-          vec3 normal = normalize(
-              t.vertex_normal[0] * hit_u
-              + t.vertex_normal[1] * hit_v
-              + t.vertex_normal[2] * (1-hit_u-hit_v));
-          return {hit, dist, vec3(1), normal};
-        }
         rmin = rmax - 2 * ray_epsilon;
         break;
       }
@@ -698,7 +540,7 @@ void test_ray(const Ray& r) {
   for (size_t i = 0; i < tris.size(); i++) {
     float new_distance, u, v;
 //    printf("%d: ", i);
-    if (r.triangle_intersect(tris[i], &new_distance, &u, &v, true)) {
+    if (r.triangle_intersect(tris[i], 0, 10000, new_distance, u, v, true)) {
 //      printf("Match: %f %f %f bbox {%f %f %f} {%f %f %f}\n", new_distance, u, v,
 //          boxes[i].min[0], boxes[i].min[1], boxes[i].min[2],
 //          boxes[i].max[0], boxes[i].max[1], boxes[i].max[2]);
@@ -784,8 +626,8 @@ void load_stl(const char* path) {
     }
 
 //      assert(record.t.normal.size2() > 0.99 && record.t.normal.size2() < 1.01);
-      vec3 computed_normal = normalize(cross(record.t.vertex[1] - record.t.vertex[0],
-            record.t.vertex[2] - record.t.vertex[0]));
+      vec3 computed_normal = cross(record.t.vertex[0] - record.t.vertex[2],
+            record.t.vertex[1] - record.t.vertex[0]);
 //      assert(dot(record.t.normal, computed_normal) > 0);
 
       record.t.normal = computed_normal;
@@ -803,9 +645,10 @@ void load_stl(const char* path) {
   std::map<std::tuple<float, float, float>, std::vector<vec3>> refs;
   for (size_t i = 0; i < tris.size(); i++) {
     const auto& t = tris[i];
-    refs[std::make_tuple(t.vertex[0].x, t.vertex[0].y, t.vertex[0].z)].push_back(t.normal * cross(t.vertex[2] - t.vertex[0], t.vertex[1] - t.vertex[0]).size());
-    refs[std::make_tuple(t.vertex[1].x, t.vertex[1].y, t.vertex[1].z)].push_back(t.normal * cross(t.vertex[0] - t.vertex[1], t.vertex[2] - t.vertex[1]).size());
-    refs[std::make_tuple(t.vertex[2].x, t.vertex[2].y, t.vertex[2].z)].push_back(t.normal * cross(t.vertex[0] - t.vertex[2], t.vertex[1] - t.vertex[2]).size());
+    vec3 normal = normalize(t.normal);
+    refs[std::make_tuple(t.vertex[0].x, t.vertex[0].y, t.vertex[0].z)].push_back(normal * cross(t.vertex[2] - t.vertex[0], t.vertex[1] - t.vertex[0]).size());
+    refs[std::make_tuple(t.vertex[1].x, t.vertex[1].y, t.vertex[1].z)].push_back(normal * cross(t.vertex[0] - t.vertex[1], t.vertex[2] - t.vertex[1]).size());
+    refs[std::make_tuple(t.vertex[2].x, t.vertex[2].y, t.vertex[2].z)].push_back(normal * cross(t.vertex[0] - t.vertex[2], t.vertex[1] - t.vertex[2]).size());
   }
   printf("Vertexes %ld unique %ld\n", tris.size() * 3, refs.size());
   for (size_t i = 0; i < tris.size(); i++) {
@@ -813,19 +656,18 @@ void load_stl(const char* path) {
     for (int v = 0; v < 3; v++) {
       std::vector<vec3>& normals = refs[std::make_tuple(t.vertex[v].x, t.vertex[v].y, t.vertex[v].z)];
       vec3 res;
+      vec3 normal = normalize(t.normal);
       for (const vec3& n : normals) {
-        if (dot(t.normal, normalize(n)) > 0.50) {
+        if (dot(normal, normalize(n)) > 0.50) {
           res += n;
         }
       }
-      if (fabs(t.normal.x) == 1 || fabs(t.normal.y) == 1 || fabs(t.normal.z) == 1) {
-        res = t.normal;
+      if (fabs(normal.x) == 1 || fabs(normal.y) == 1 || fabs(normal.z) == 1) {
+        res = normal;
       }
       res = normalize(res);
       t.vertex_normal[v] = res;
     }
-    vec3 c = cross(t.vertex[1] - t.vertex[0], t.vertex[2] - t.vertex[0]);
-    t.inv_denom = 1./c.size();
   }
 }
 
@@ -842,8 +684,7 @@ void test_tri() {
   t.vertex_normal[1] = normalize(t.vertex[1]);
   t.vertex_normal[2] = normalize(t.vertex[2]);
   vec3 c = cross(t.vertex[1] - t.vertex[0], t.vertex[2] - t.vertex[0]);
-  t.inv_denom = 1/c.size();
-  printf("c %f inv_denom %f\n", c.size(), t.inv_denom);
+  printf("c %f\n", c.size());
 
   for (int i = 0; i < 100; i++) {
     float u0 = drand48();
@@ -860,7 +701,7 @@ void test_tri() {
     Ray ray = Ray::make(vec3(0, 0, -5) + (t.vertex[0] * u0 + t.vertex[1] * v0 + t.vertex[2] * (1-u0-v0)), vec3(0, 0, 1));
     float dist, u, v;
     printf("u0 %f v0 %f origin %f %f %f idir %f %f %f\n", u0, v0, ray.origin.x, ray.origin.y, ray.origin.z, ray.idir.x, ray.idir.y, ray.idir.z); 
-    assert(ray.triangle_intersect(t, &dist, &u, &v, false) == true);
+    assert(ray.triangle_intersect(t, 0, 10000, dist, u, v, false) == true);
     printf("u0 %f v0 %f dist: %f u: %f v: %f\n", u0, v0, dist, u, v); 
     assert(fabs(u - u0) < 0.001);
     assert(fabs(v - v0) < 0.001);
