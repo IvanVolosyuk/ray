@@ -1,5 +1,9 @@
 #include "sw_renderer.hpp"
 #include <unistd.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <fcntl.h>
+
 #include <iostream>
 
 //#define P(x) print(#x, x);
@@ -24,33 +28,100 @@ void print(const char*, const char* v) {
 #include "shader/shader.hpp"
 bool scene_loaded = false;
 
+template<class T>
+void save_object(int fd, std::vector<T> v) {
+  int size = v.size();
+  printf("Saving %d objects\n", size);
+  int res = write(fd, &size, sizeof(int));
+  assert(res == sizeof(int));
+  int len = sizeof(T) * v.size();
+  res = write(fd, &v[0], len);
+  assert(len == res);
+}
+
+template<class T>
+void save_object(int fd, T v) {
+  int res = write(fd, &v, sizeof(T));
+  assert(res == sizeof(T));
+}
+
+template<class T>
+void load_object(int fd, std::vector<T>& v) {
+  int size;
+  int res = read(fd, &size, sizeof(int));
+  assert(res == sizeof(int));
+  v.resize(size);
+  int len = sizeof(T) * v.size();
+  res = read(fd, &v[0], len);
+  assert(len == res);
+  printf("Loading %ld objects\n", v.size());
+}
+
+template<class T>
+void load_object(int fd, T& v) {
+  int res = read(fd, &v, sizeof(T));
+  assert(res == sizeof(T));
+}
+
+
+void save() {
+  int fd = open("cache.dat", O_CREAT|O_WRONLY, 0777);
+  if (fd == -1) {
+    perror("Cannot create cache");
+    exit(1);
+  }
+  save_object(fd, tri_lists);
+  save_object(fd, tris);
+  save_object(fd, boxes);
+  save_object(fd, kdtree.bbox);
+  save_object(fd, kdtree.item);
+  close(fd);
+}
+
+bool load() {
+  int fd = open("cache.dat", O_RDONLY, 0);
+  if (fd == -1) {
+    perror("Cache not found");
+    return false;
+  }
+  load_object(fd, tri_lists);
+  load_object(fd, tris);
+  load_object(fd, boxes);
+  load_object(fd, kdtree.bbox);
+  load_object(fd, kdtree.item);
+  close(fd);
+  return true;
+}
+
 void init_scene() {
   if (scene_loaded) return;
   scene_loaded = true;
-  tris.clear();
-  tris.push_back({});
-  boxes.clear();
-  tri_lists.clear();
-  tri_lists.push_back({});
-  kdtree.item.clear();
+  if (!load()) {
+    tris.clear();
+    tris.push_back({});
+    boxes.clear();
+    tri_lists.clear();
+    tri_lists.push_back({});
+    kdtree.item.clear();
 
-//  load_stl("/home/ivan/Downloads/DiamondCleaned2a.stl");
-//  load_stl("/home/ivan/Downloads/dinifix.stl");
-  load_stl("/home/ivan/all.stl");
-//  load_stl("/home/ivan/diamond.stl");
-//  load_stl("/home/ivan/Downloads/PumpkinsCombined.stl");
-//  load_stl("/home/ivan/lamp.stl");
-//  load_stl("/home/ivan/cube.stl");
-//  load_stl("/home/ivan/Downloads/Homme135-140.stl");
-//  load_stl("/home/ivan/castle2.stl");
-//  load_stl("/home/ivan/sphere.stl");
-  gen2();
-  build();
+    //  load_stl("/home/ivan/Downloads/DiamondCleaned2a.stl");
+    //  load_stl("/home/ivan/Downloads/dinifix.stl");
+    load_stl("/home/ivan/all.stl");
+    //  load_stl("/home/ivan/diamond.stl");
+    //  load_stl("/home/ivan/Downloads/PumpkinsCombined.stl");
+    //  load_stl("/home/ivan/lamp.stl");
+    //  load_stl("/home/ivan/cube.stl");
+    //  load_stl("/home/ivan/Downloads/Homme135-140.stl");
+    //  load_stl("/home/ivan/castle2.stl");
+    //  load_stl("/home/ivan/sphere.stl");
+    gen2();
+    build();
+    save();
+  }
   printf("Tree size: %ld {%f %f %f} {%f %f %f}\n", kdtree.item.size(),
       kdtree.bbox.min[0], kdtree.bbox.min[1],kdtree.bbox.min[2],
       kdtree.bbox.max[0], kdtree.bbox.max[1],kdtree.bbox.max[2]);
 //  test_rays();
-
 
   printf("Boxes %ld Hits %ld Intersects %ld Traverses %ld Traverses per ray %f\n",
       boxes.size(), nhits, nintersects, ntraverses, ntraverses / (float)ntests);
