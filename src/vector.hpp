@@ -46,6 +46,7 @@ class BasePoint {
 
     template<class Y>
     static inline BasePoint<T> convert(const BasePoint<Y>& from);
+    operator const float*() const { return &x; }
 };
 
 using Point = BasePoint<float>;

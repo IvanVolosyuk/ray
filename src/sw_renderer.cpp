@@ -106,7 +106,7 @@ void init_scene() {
 
     //  load_stl("/home/ivan/Downloads/DiamondCleaned2a.stl");
     //  load_stl("/home/ivan/Downloads/dinifix.stl");
-    load_stl("/home/ivan/all.stl");
+     load_stl("/home/ivan/all.stl");
     //  load_stl("/home/ivan/diamond.stl");
     //  load_stl("/home/ivan/Downloads/PumpkinsCombined.stl");
     //  load_stl("/home/ivan/lamp.stl");

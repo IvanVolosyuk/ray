@@ -12,6 +12,8 @@
 #include "renderer.hpp"
 #include "texture.hpp"
 
+class tri;
+
 class OpenglRenderer : public Renderer {
   OpenglRenderer() = default;
   public:
@@ -29,6 +31,7 @@ class OpenglRenderer : public Renderer {
 
   private:
   void bindTexture(int idx, Texture& tex);
+  optix::Geometry MakeGeometry();
 
   SDL_GLContext context_ = nullptr;
   ImGuiIO* io_;
@@ -60,4 +63,7 @@ class OpenglRenderer : public Renderer {
   optix::Buffer tree_buffer;
   optix::Buffer tri_buffer;
   optix::Buffer tri_lists_buffer;
+
+  optix::Program tri_intersection_;
+  optix::Program tri_bounding_box_;
 };

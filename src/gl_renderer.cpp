@@ -31,6 +31,9 @@
 #include "shader/kd_types.hpp"
 #include "shader/input.hpp"
 
+// My
+#include "optix/vertex_attr.h"
+
 using std::string;
 using std::endl;
 
@@ -243,7 +246,7 @@ void OpenglRenderer::bindTexture(int idx, Texture& tex) {
   glBindBuffer(GL_SHADER_STORAGE_BUFFER, ssbo);
   const auto& t = tex.Export();
   glBufferData(GL_SHADER_STORAGE_BUFFER,
-      t.size(), &t[0], GL_STATIC_COPY);
+      t.size(), t.data(), GL_STATIC_COPY);
   glBindBufferBase(GL_SHADER_STORAGE_BUFFER, idx, ssbo);
   glBindBuffer(GL_SHADER_STORAGE_BUFFER, 0); // unbind
 }
@@ -307,7 +310,7 @@ void readTextureLayer(
         RT_BUFFER_INPUT, RT_FORMAT_UNSIGNED_BYTE, 1024, 1024);
     unsigned char *dst = (unsigned char*) buffer->map(
         0, RT_BUFFER_MAP_WRITE_DISCARD);
-    memcpy(dst, &bytes[0], bytes.size());
+    memcpy(dst, bytes.data(), bytes.size());
   }
   buffer->unmap(0);
   tex->setBuffer(buffer);
@@ -332,6 +335,75 @@ void init_scene();
 extern std::vector<tri> tris;
 extern std::vector<int> tri_lists;
 
+optix::Geometry OpenglRenderer::MakeGeometry() {
+  auto make_float3 = [](vec3 v) {
+    return optix::float3 {v.x, v.y, v.z};
+  };
+
+
+  auto p = [](vec3 v, vec3 n) {
+    auto toint = [](float f) {
+      union {
+        float f0;
+        int i0;
+      };
+      f0 = f;
+      return i0;
+    };
+    return std::make_tuple(toint(v.x), toint(v.y), toint(v.z), toint(n.x), toint(n.y), toint(n.z));
+  };
+
+  optix::Geometry geometry = ctx_->createGeometry();
+  std::map<std::tuple<int, int, int, int, int, int>, std::pair<vec3, vec3>> vertex_normal;
+  for (size_t i = 0; i < tris.size(); i++) {
+    const auto& t = tris[i];
+    vertex_normal[p(t.vertex[0], t.vertex_normal[0])] = std::make_pair(t.vertex[0], t.vertex_normal[0]);
+    vertex_normal[p(t.vertex[1], t.vertex_normal[1])] = std::make_pair(t.vertex[1], t.vertex_normal[1]);
+    vertex_normal[p(t.vertex[2], t.vertex_normal[2])] = std::make_pair(t.vertex[2], t.vertex_normal[2]);
+  }
+  std::vector<VertexAttr> attrs;
+  std::map<std::tuple<int, int, int, int, int, int>, size_t> attr_refs;
+  for (auto it : vertex_normal) {
+    attr_refs[p(it.second.first, it.second.second)] = attrs.size();
+    VertexAttr attr;
+    attr.vertex = make_float3(it.second.first);
+    attr.normal = make_float3(it.second.second);
+    attrs.push_back(attr);
+  }
+  std::vector<uint32_t> indices;
+  for (size_t i = 1; i < tris.size(); i++) {
+    for (int j = 0; j < 3; j++) {
+      auto t = tris[i];
+      auto key = p(t.vertex[j], t.vertex_normal[j]);
+      auto val = attr_refs.find(key);
+      assert(val != attr_refs.end());
+      indices.push_back(val->second);
+    }
+  }
+
+  optix::Buffer attributesBuffer = ctx_->createBuffer(RT_BUFFER_INPUT, RT_FORMAT_USER);
+  attributesBuffer->setElementSize(sizeof(VertexAttr));
+  attributesBuffer->setSize(attrs.size());
+
+  void *dst = attributesBuffer->map(0, RT_BUFFER_MAP_WRITE_DISCARD);
+  memcpy(dst, attrs.data(), sizeof(VertexAttr) * attrs.size());
+  attributesBuffer->unmap();
+
+  optix::Buffer indicesBuffer = ctx_->createBuffer(RT_BUFFER_INPUT, RT_FORMAT_UNSIGNED_INT3, indices.size() / 3);
+  dst = indicesBuffer->map(0, RT_BUFFER_MAP_WRITE_DISCARD);
+  memcpy(dst, indices.data(), sizeof(optix::uint3) * indices.size() / 3);
+  indicesBuffer->unmap();
+
+  geometry->setBoundingBoxProgram(tri_bounding_box_);
+  geometry->setIntersectionProgram(tri_intersection_);
+
+  geometry["attributesBuffer"]->setBuffer(attributesBuffer);
+  geometry["indicesBuffer"]->setBuffer(indicesBuffer);
+  printf("Geometry: %ld attrs %ld indices\n", attrs.size(), indices.size());
+  geometry->setPrimitiveCount((unsigned int)(indices.size()) / 3);
+  return geometry;
+}
+
 void OpenglRenderer::initRenderer() {
   ctx_ = optix::Context::create();
   std::vector<int> devices = {0};
@@ -344,9 +416,11 @@ void OpenglRenderer::initRenderer() {
   std::cout << "Using " << ctx_->getDeviceName(devices[0]) << std::endl;
   auto ray_prog = ctx_->createProgramFromPTXFile("ray.ptx", "ray");
   auto exc_prog = ctx_->createProgramFromPTXFile("exception.ptx", "exception");
+  tri_intersection_ = ctx_->createProgramFromPTXFile("triangle.ptx", "intersect");
+  tri_bounding_box_ = ctx_->createProgramFromPTXFile("triangle.ptx", "bounds");
 
   ctx_->setEntryPointCount(1); // 0 = render
-  ctx_->setRayTypeCount(0);    // This initial demo is not shooting any rays.
+  ctx_->setRayTypeCount(2);    // This initial demo is not shooting any rays.
   ctx_->setStackSize(1024);
 
 #if USE_DEBUG_EXCEPTIONS
@@ -370,6 +444,7 @@ void OpenglRenderer::initRenderer() {
 
   ctx_->setRayGenerationProgram(0, ray_prog);
   ctx_->setExceptionProgram(0, exc_prog);
+  ctx_->setMissProgram( 0, ctx_->createProgramFromPTXFile( "ray.ptx", "miss" ) );
 
   loadTexture(ctx_, "wall", *wall_tex);
   loadTexture(ctx_, "ceiling", *ceiling_tex);
@@ -455,9 +530,24 @@ void OpenglRenderer::initRenderer() {
   tri_lists_buffer->unmap(0);
   ctx_["sysTriLists"]->setBuffer(tri_lists_buffer);
 
+
+  optix::Material diffuse = ctx_->createMaterial();
+  optix::Program diffuse_prog = ctx_->createProgramFromPTXFile( "ray.ptx", "diffuse" );
+  optix::Program shadow_prog = ctx_->createProgramFromPTXFile( "ray.ptx", "shadow" );
+  diffuse->setClosestHitProgram( 0, diffuse_prog );
+  diffuse->setAnyHitProgram( 1, shadow_prog );
+
   // Construct objects hierarchy
-  auto group = ctx_->createGeometryGroup();
-//  group->setAcceleration(nullptr);
+  auto geo = MakeGeometry();
+  optix::GeometryInstance instance = ctx_->createGeometryInstance();
+  instance->setGeometry(geo);
+  instance->setMaterialCount(1);
+  instance->setMaterial(0, diffuse);
+
+  std::vector<optix::GeometryInstance> instances { instance };
+  optix::GeometryGroup geometry_group = ctx_->createGeometryGroup(instances.begin(), instances.end());
+  geometry_group->setAcceleration( ctx_->createAcceleration( "Trbvh" ) );
+  ctx_["top_object"]->set( geometry_group );
 }
 
 bool OpenglRenderer::setup() {
@@ -587,7 +677,7 @@ float antialising = 1;
 
 void OpenglRenderer::draw() {
   // Safety alarm to avoid hang up.
-  alarm(30);
+  alarm(120);
 
   ImGui_ImplOpenGL3_NewFrame();
   ImGui_ImplSDL2_NewFrame(window_);

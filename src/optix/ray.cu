@@ -41,6 +41,34 @@ struct MyRay {
   }
 };
 
+rtDeclareVariable(rtObject,      top_object, , );
+
+struct RayData {
+  float3 intensity;
+  float3 albedo;
+  float3 result_normal;
+
+  float3 origin;
+  float3 norm_ray;
+  // FIXME:add norm_ray_inv as well
+  float3 color_filter;
+  float light_multiplier;
+  int flags;
+  uint seed;
+};
+
+rtDeclareVariable(RayData, current_prd, rtPayload, );
+//rtDeclareVariable(float3,     geometric_normal, attribute geometric_normal, );
+rtDeclareVariable(optix::float3, varNormal,    attribute NORMAL, ); 
+rtDeclareVariable(float,      t_hit,            rtIntersectionDistance, );
+
+struct RayData_ShadowRay {
+    bool in_shadow;
+};
+rtDeclareVariable(RayData_ShadowRay, current_prd_shadow, rtPayload, );
+
+
+
 struct StackEntry {
   int idx;
   float dist;
@@ -816,20 +844,6 @@ float3 scatter(uint& seed, const float3 v, float specular_exponent) {
 #define FLAG_ALBEDO 4
 #define FLAG_NORMAL 8
 
-struct RayData {
-  float3 intensity;
-  float3 albedo;
-  float3 result_normal;
-
-  float3 origin;
-  float3 norm_ray;
-  // FIXME:add norm_ray_inv as well
-  float3 color_filter;
-  float light_multiplier;
-  int flags;
-  uint seed;
-};
-
 RT_FUNCTION
 float light_solid_angle_div_hemisphere(float3 origin) {
   float3 vector_to_center = origin - light_pos;
@@ -851,6 +865,105 @@ float3 uniform_hemisphere(uint& seed, float3 normal) {
   return p;
 }
 
+RT_FUNCTION
+void compute_light_new(
+    REF(RayData) prd,
+    float cos_a,
+    const float3 color,
+    const float3 specular_color,
+    const Material m,
+    const float3 normal) {
+  if ((prd.flags & FLAG_ALBEDO) == 0) {
+    prd.flags |= FLAG_ALBEDO;
+    prd.albedo = color;
+  }
+  if ((prd.flags & FLAG_NORMAL) == 0) {
+    prd.flags |= FLAG_NORMAL;
+    prd.result_normal = normal;
+  }
+
+  if ((prd.flags & FLAG_NO_SECONDARY) == 0) {
+    prd.light_multiplier = 0;
+    float3 light_rnd_pos = light_pos + light_distr(prd.seed);
+
+    float3 light_from_point = light_rnd_pos - prd.origin;
+    float angle_x_distance = dot(normal, light_from_point);
+    if (angle_x_distance > 0) {
+
+      float light_distance2 = dot(light_from_point, light_from_point);
+      float light_distance_inv = inversesqrt(light_distance2);
+      float light_distance = 1.f/light_distance_inv;
+      float3 light_from_point_norm = light_from_point * light_distance_inv;
+
+      // FIXME
+//      Hit2 hit = bbox_hit(light_from_point_norm, prd.origin, rmin_epsilon, light_distance, true);
+      RayData_ShadowRay shadow_prd;
+      shadow_prd.in_shadow = false;
+      Ray shadow_ray = make_Ray( prd.origin, light_from_point_norm,
+          // FIXME: light_distance can be inside light source, epsilon useless, have to get rid of light in shadow ray
+          /*shadow_ray_type*/1, rmin_epsilon, light_distance);
+      rtTrace(top_object, shadow_ray, shadow_prd);
+
+      if (!shadow_prd.in_shadow) {
+        float a = dot(prd.norm_ray, light_from_point_norm);
+        float specular = 0;
+        if (a > 0) {
+          // Clamp
+          a = min(a, 1.f);
+          specular = powf(a, m.specular_exponent_);
+        }
+        float angle = angle_x_distance * light_distance_inv;
+
+        float3 reflected_light = (color * light_color) * m.diffuse_ammount_ * sysLightSize2;
+        float diffuse_attenuation = cos_a / M_PI;
+        prd.intensity += reflected_light * prd.color_filter * (diffuse_attenuation * angle / (M_PI* (light_distance2 + 1e-12f)))
+          + (color * light_color) * prd.color_filter * (specular * (1 - m.diffuse_ammount_) / m.specular_exponent_);
+      }
+    }
+  }
+  if ((prd.flags & FLAG_TERMINATE) != 0) return;
+
+  float r = reflect_gen(prd.seed);
+  bool is_diffuse = r < m.diffuse_ammount_;
+  if (is_diffuse) {
+    prd.norm_ray = uniform_hemisphere(prd.seed, normal);
+    float angle = dot(prd.norm_ray, normal);
+    if (angle <= 0) {
+      prd.flags |= FLAG_TERMINATE;
+      return;
+    }
+    prd.color_filter = prd.color_filter * (color * angle / M_PI);
+  } else {
+    // specular, alter reflected ray
+    prd.norm_ray = scatter(prd.seed, prd.norm_ray, m.specular_exponent_);
+    float angle = dot(prd.norm_ray, normal);
+    if (angle <= 0) {
+      prd.flags |= FLAG_TERMINATE;
+      return;
+    }
+    prd.color_filter = prd.color_filter * specular_color;
+  }
+}
+
+RT_PROGRAM void diffuse() {
+  float3 normal = varNormal;
+  float cos_a = -dot(current_prd.norm_ray, normal);
+//  Material m {0.95, 100};
+  Material m { ceiling_diffuse_ammount, ceiling_specular_exponent };
+  float3 color = make_float3(1);
+  float3 specular_color = make_float3(1);
+ current_prd.origin = current_prd.origin + t_hit * current_prd.norm_ray;
+ current_prd.norm_ray = current_prd.norm_ray - normal * (2 * dot(current_prd.norm_ray, normal));
+ compute_light_new(current_prd, cos_a, color, specular_color, m, normal);
+}
+
+RT_PROGRAM void shadow()
+{
+    current_prd_shadow.in_shadow = true;
+    rtTerminateRay();
+}
+
+// FIXME: not used anymore?
 RT_FUNCTION
 void compute_light(
     REF(RayData) ray,
@@ -996,6 +1109,38 @@ void triangle_trace (
 }
 
 
+RT_PROGRAM void miss() {
+  Hit light = light_hit(current_prd.norm_ray, current_prd.origin);
+  if (light.closest_point_distance_from_viewer_ < max_distance) {
+    light_trace_new(light, current_prd);
+    return;
+  }
+
+  auto p = room_hit(current_prd.seed, current_prd.norm_ray, current_prd.origin);
+  if (p.min_dist == max_distance) {
+    current_prd.intensity = current_prd.color_filter * vec3(0.02, 0.02, 0.2);
+    if ((current_prd.flags & FLAG_ALBEDO) == 0) {
+      current_prd.albedo = vec3(0.02, 0.02, 0.2);
+    }
+    if ((current_prd.flags & FLAG_NORMAL) == 0) {
+      current_prd.result_normal = make_float3(0);
+    }
+    current_prd.flags |= FLAG_TERMINATE;
+    return;
+  }
+  current_prd.origin = p.intersection;
+  float cos_a = -dot(current_prd.norm_ray, p.normal);
+  current_prd.norm_ray = p.reflection;
+
+  compute_light(
+      current_prd,
+      cos_a,
+      p.color,
+      p.color,
+      p.material,
+      p.normal);
+}
+
 RT_FUNCTION
 void room_trace(
     REF(RayData) ray) {
@@ -1115,34 +1260,37 @@ void ball_trace (
 
 
 RT_FUNCTION
-void trace (RayData& ray) {
+void trace (RayData& prd) {
 
   int depth = 0;
   while (true) {
-    Hit2 hit = bbox_hit(ray.norm_ray, ray.origin, rmin_epsilon, max_distance, true);
+    if (depth == sysMaxDepth - 1) prd.flags |= FLAG_TERMINATE;
+    Ray ray = make_Ray( prd.origin, prd.norm_ray,
+        /*shadow_ray_type*/0, rmin_epsilon, max_distance);
+    rtTrace(top_object, ray, prd);
+//    Hit2 hit = bbox_hit(ray.norm_ray, ray.origin, rmin_epsilon, max_distance, true);
+//
+//    Hit light = light_hit(ray.norm_ray, ray.origin);
+//    if (light.closest_point_distance_from_viewer_ <
+//        hit.distance) {
+//      light_trace_new(light, ray);
+//      return;
+//    }
+//
+//
+//    if (hit.id < 0) {
+//      room_trace(ray);
+//    } else {
+//      triangle_trace(ray, hit);
+//    }
+    if ((prd.flags & FLAG_TERMINATE) != 0) return;
 
-    Hit light = light_hit(ray.norm_ray, ray.origin);
-    if (light.closest_point_distance_from_viewer_ <
-        hit.distance) {
-      light_trace_new(light, ray);
-      return;
-    }
-
-    if (depth == sysMaxDepth - 1) ray.flags |= FLAG_TERMINATE;
-
-    if (hit.id < 0) {
-      room_trace(ray);
-    } else {
-      triangle_trace(ray, hit);
-    }
-    if ((ray.flags & FLAG_TERMINATE) != 0) return;
-
-    if ((ray.flags & (FLAG_ALBEDO|FLAG_NORMAL)) == (FLAG_ALBEDO|FLAG_NORMAL))  {
-      float cutoff = fmaxf(ray.color_filter);
-      if (rand1(ray.seed) >= cutoff) {
+    if ((prd.flags & (FLAG_ALBEDO|FLAG_NORMAL)) == (FLAG_ALBEDO|FLAG_NORMAL))  {
+      float cutoff = fmaxf(prd.color_filter);
+      if (rand1(prd.seed) >= cutoff) {
         return;
       }
-      ray.color_filter /= cutoff;
+      prd.color_filter /= cutoff;
     }
     depth++;
   }
